@@ -85,6 +85,8 @@ function VideoPipelineControl() {
   const [generatorMode, setGeneratorMode] = useState(false);
   const [generatorLoading, setGeneratorLoading] = useState(false);
   const [generatorBrief, setGeneratorBrief] = useState('');
+  const [youtubeMetadata, setYoutubeMetadata] = useState(null);
+  const [youtubeMetadataLoading, setYoutubeMetadataLoading] = useState(false);
 
   // Load state from server on mount
   useEffect(() => {
@@ -354,6 +356,58 @@ function VideoPipelineControl() {
       alert('Assembly failed: ' + err.message);
     } finally {
       setAssembling(false);
+    }
+  };
+
+  const generateYoutubeMetadata = async () => {
+    if (!project) return;
+    
+    setYoutubeMetadataLoading(true);
+    
+    try {
+      const response = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1500,
+          messages: [{
+            role: 'user',
+            content: `Generate YouTube Shorts metadata for this AI-generated video project.
+
+PROJECT TITLE: ${project.title}
+CONCEPT: ${project.concept}
+DURATION: ~${project.target_duration} seconds
+ASPECT RATIO: ${project.aspect_ratio}
+
+SHOTS:
+${project.shots.map(s => `- ${s.shot_id}: ${s.veo_prompt}${s.vo ? ` [VO: "${s.vo.text}"]` : ''}`).join('\n')}
+
+Generate metadata optimized for YouTube Shorts discovery. Return JSON only:
+{
+  "title": "Catchy title under 100 characters, include emoji if appropriate",
+  "description": "Engaging description with context about the piece. Include a note that this was created with AI tools (Veo, Claude, ElevenLabs). 2-3 short paragraphs max. Include relevant hashtags at the end.",
+  "tags": ["array", "of", "relevant", "tags", "for", "youtube", "max", "15"]
+}`
+          }]
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate metadata');
+      }
+      
+      const data = await response.json();
+      const text = data.content.map(c => c.text || '').join('');
+      const cleaned = text.replace(/```json|```/g, '').trim();
+      const metadata = JSON.parse(cleaned);
+      
+      setYoutubeMetadata(metadata);
+    } catch (err) {
+      console.error('YouTube metadata error:', err);
+      alert('Failed to generate metadata: ' + err.message);
+    } finally {
+      setYoutubeMetadataLoading(false);
     }
   };
 
@@ -2089,6 +2143,123 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
                   >
                     Download
                   </a>
+                </div>
+              )}
+              
+              {/* YouTube Metadata */}
+              {project && (
+                <div style={{ marginTop: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div className="label">YouTube Metadata</div>
+                    <button
+                      onClick={generateYoutubeMetadata}
+                      disabled={youtubeMetadataLoading}
+                      className="btn"
+                      style={{ padding: '4px 12px', fontSize: '12px' }}
+                    >
+                      {youtubeMetadataLoading ? 'Generating...' : youtubeMetadata ? 'Regenerate' : 'Generate'}
+                    </button>
+                  </div>
+                  
+                  {youtubeMetadata && (
+                    <div style={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: '4px', padding: '12px' }}>
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>Title</div>
+                        <div style={{ 
+                          background: '#0d0d0d', 
+                          padding: '8px', 
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          fontWeight: 'bold'
+                        }}>
+                          {youtubeMetadata.title}
+                        </div>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(youtubeMetadata.title)}
+                          style={{
+                            marginTop: '4px',
+                            background: 'transparent',
+                            border: '1px solid #444',
+                            color: '#888',
+                            padding: '2px 8px',
+                            fontSize: '10px',
+                            borderRadius: '3px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>Description</div>
+                        <div style={{ 
+                          background: '#0d0d0d', 
+                          padding: '8px', 
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          whiteSpace: 'pre-wrap',
+                          lineHeight: '1.5'
+                        }}>
+                          {youtubeMetadata.description}
+                        </div>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(youtubeMetadata.description)}
+                          style={{
+                            marginTop: '4px',
+                            background: 'transparent',
+                            border: '1px solid #444',
+                            color: '#888',
+                            padding: '2px 8px',
+                            fontSize: '10px',
+                            borderRadius: '3px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>Tags</div>
+                        <div style={{ 
+                          background: '#0d0d0d', 
+                          padding: '8px', 
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '4px'
+                        }}>
+                          {youtubeMetadata.tags.map((tag, i) => (
+                            <span key={i} style={{
+                              background: '#2a2a2a',
+                              padding: '2px 8px',
+                              borderRadius: '3px',
+                              color: '#60a5fa'
+                            }}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(youtubeMetadata.tags.join(', '))}
+                          style={{
+                            marginTop: '4px',
+                            background: 'transparent',
+                            border: '1px solid #444',
+                            color: '#888',
+                            padding: '2px 8px',
+                            fontSize: '10px',
+                            borderRadius: '3px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Copy Tags
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
