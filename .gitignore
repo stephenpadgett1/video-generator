@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Data directory (contains API keys, generated content, project files)
+data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
