@@ -1,0 +1,43 @@
+{
+  "name": "veo-clips-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for browsing and searching AI-generated video clips from Google Veo",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "veo-clips-mcp": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/server.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "veo",
+    "video",
+    "ai",
+    "clips",
+    "google"
+  ],
+  "author": "",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "manifest.json",
+    "README.md"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "express": "^5.2.1",
+    "zod": "^4.3.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
