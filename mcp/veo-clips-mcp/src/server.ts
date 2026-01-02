@@ -678,6 +678,125 @@ server.registerTool(
   }
 );
 
+// Tool: List available sequence types
+server.registerTool(
+  "list_sequence_types",
+  {
+    title: "List Sequence Types",
+    description: "List available sequence type definitions for building clip sequences.",
+    inputSchema: {},
+  },
+  async () => {
+    const sequenceTypes = [
+      {
+        name: "mood_journey",
+        description: "A sequence that transitions through specified moods, creating an emotional arc.",
+        params: {
+          moods: "string[] - Sequence of moods to traverse",
+          clipsPerMood: "number (optional, default 1) - Clips per mood phase"
+        }
+      }
+    ];
+
+    const output = sequenceTypes.map(st =>
+      `**${st.name}**\n${st.description}\n\nParameters:\n${Object.entries(st.params).map(([k, v]) => `- ${k}: ${v}`).join('\n')}`
+    ).join('\n\n---\n\n');
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `# Available Sequence Types\n\n${output}`,
+        },
+      ],
+    };
+  }
+);
+
+// Tool: Build a sequence (slot generation only, no filling yet)
+server.registerTool(
+  "build_sequence",
+  {
+    title: "Build Sequence",
+    description: `Build a sequence of clip slots based on a sequence type definition.
+Currently only generates empty slots - filling with actual clips coming soon.
+Returns JSON with slots array, each slot having requirements that can be used to search for matching clips.`,
+    inputSchema: {
+      type: z.literal("mood_journey").describe("The sequence type to build"),
+      moods: z.array(z.string()).describe("Sequence of moods to traverse"),
+      clipsPerMood: z.number().optional().describe("Clips per mood phase (default 1)"),
+      subjects: z.array(z.string()).optional().describe("Subject filter (stored for future use)"),
+      duration: z.object({
+        target: z.number(),
+        tolerance: z.number().optional()
+      }).optional().describe("Target duration constraints (stored for future use)"),
+      aspectRatio: z.string().optional().describe("Required aspect ratio (e.g., '720:1280')"),
+      mustStartClean: z.boolean().optional().describe("First clip must start cleanly"),
+      mustEndClean: z.boolean().optional().describe("Last clip must end cleanly"),
+    },
+  },
+  async (args) => {
+    const { moods, clipsPerMood = 1, aspectRatio, mustStartClean, mustEndClean } = args;
+
+    interface SlotRequirements {
+      mood: string;
+      aspectRatio?: string;
+      mustStartClean?: boolean;
+      mustEndClean?: boolean;
+    }
+
+    interface Slot {
+      id: string;
+      label: string;
+      requirements: SlotRequirements;
+      clip: null;
+      score: null;
+    }
+
+    const slots: Slot[] = [];
+    let slotIndex = 0;
+    const totalSlots = moods.length * clipsPerMood;
+
+    for (const mood of moods) {
+      for (let i = 0; i < clipsPerMood; i++) {
+        const isFirst = slotIndex === 0;
+        const isLast = slotIndex === totalSlots - 1;
+
+        const requirements: SlotRequirements = { mood };
+        if (aspectRatio) requirements.aspectRatio = aspectRatio;
+        if (mustStartClean && isFirst) requirements.mustStartClean = true;
+        if (mustEndClean && isLast) requirements.mustEndClean = true;
+
+        slots.push({
+          id: `slot_${slotIndex}`,
+          label: mood,
+          requirements,
+          clip: null,
+          score: null
+        });
+
+        slotIndex++;
+      }
+    }
+
+    const result = {
+      slots,
+      gaps: [] as string[],
+      totalDuration: 0,
+      warnings: [] as string[]
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+);
+
 // =============================================================================
 // RESOURCES
 // =============================================================================
