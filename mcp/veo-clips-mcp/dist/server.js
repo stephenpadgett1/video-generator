@@ -118,7 +118,8 @@ function searchClips(clips, options) {
 // =============================================================================
 // GEMINI AI HELPERS
 // =============================================================================
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_FLASH_MODEL = "gemini-2.0-flash";
+const GEMINI_PRO_MODEL = "gemini-2.5-pro";
 const GEMINI_REGION = "us-central1";
 // Token cache for gcloud auth
 let cachedAccessToken = null;
@@ -184,7 +185,7 @@ Return JSON only: { "selected": "filename" or null, "reasoning": "why" }`;
     try {
         const accessToken = getAccessToken();
         const projectId = getProjectId();
-        const response = await fetch(`https://${GEMINI_REGION}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${GEMINI_REGION}/publishers/google/models/${GEMINI_MODEL}:generateContent`, {
+        const response = await fetch(`https://${GEMINI_REGION}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${GEMINI_REGION}/publishers/google/models/${GEMINI_FLASH_MODEL}:generateContent`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -229,6 +230,53 @@ Return JSON only: { "selected": "filename" or null, "reasoning": "why" }`;
             selected: null,
             reasoning: `Error calling Gemini: ${err instanceof Error ? err.message : String(err)}`
         };
+    }
+}
+async function generateVeoPrompt(requirements, prevClip, nextClip) {
+    const systemPrompt = `Generate a Veo video generation prompt for a clip with these requirements:
+
+Mood: ${requirements.mood}
+Subjects: ${requirements.subjects?.join(', ') || "open to interpretation"}
+Format: ${requirements.aspectRatio || "any"}
+Duration: approximately 8 seconds
+${requirements.mustStartClean ? "Must have a clean opening frame suitable for editing." : ""}
+${requirements.mustEndClean ? "Must have a clean ending suitable for editing." : ""}
+
+Context - neighboring clips in sequence:
+- Previous: ${prevClip ? safeStr(prevClip.analysis?.description) : "none"}
+- Next: ${nextClip ? safeStr(nextClip.analysis?.description) : "none"}
+
+Write a concise, effective prompt for Veo. Focus on visual description, mood, and camera movement. Return ONLY the prompt text, no explanations.`;
+    try {
+        const accessToken = getAccessToken();
+        const projectId = getProjectId();
+        const response = await fetch(`https://${GEMINI_REGION}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${GEMINI_REGION}/publishers/google/models/${GEMINI_PRO_MODEL}:generateContent`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+                contents: [{
+                        role: 'user',
+                        parts: [{ text: systemPrompt }]
+                    }],
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 512
+                }
+            })
+        });
+        if (!response.ok) {
+            const error = await response.text();
+            return `[Error generating prompt: ${response.status}]`;
+        }
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return text.trim();
+    }
+    catch (err) {
+        return `[Error: ${err instanceof Error ? err.message : String(err)}]`;
     }
 }
 function formatClipSummary(clip) {
@@ -659,7 +707,7 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
     const { moods, clipsPerMood = 1, subjects, aspectRatio, mustStartClean, mustEndClean } = args;
     const filledSlots = [];
     const usedClips = new Set();
-    const gaps = [];
+    const gapIndices = [];
     const warnings = [];
     let totalDuration = 0;
     let slotIndex = 0;
@@ -705,7 +753,7 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
                 else {
                     // Selected clip not found (shouldn't happen)
                     warnings.push(`${slotId}: Selected clip "${selection.selected}" not found in library`);
-                    gaps.push(slotId);
+                    gapIndices.push(slotIndex);
                     filledSlots.push({
                         id: slotId,
                         label: mood,
@@ -717,7 +765,7 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
             }
             else {
                 // No clip selected - this is a gap
-                gaps.push(slotId);
+                gapIndices.push(slotIndex);
                 filledSlots.push({
                     id: slotId,
                     label: mood,
@@ -728,6 +776,36 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
             }
             slotIndex++;
         }
+    }
+    // Generate Veo prompts for gaps
+    const gaps = [];
+    for (const gapIdx of gapIndices) {
+        const slot = filledSlots[gapIdx];
+        // Find neighbor clips for context
+        let prevClip = null;
+        let nextClip = null;
+        // Look backward for previous filled clip
+        for (let i = gapIdx - 1; i >= 0; i--) {
+            if (filledSlots[i].clip) {
+                prevClip = clips.find(c => c.filename === filledSlots[i].clip.filename) || null;
+                break;
+            }
+        }
+        // Look forward for next filled clip
+        for (let i = gapIdx + 1; i < filledSlots.length; i++) {
+            if (filledSlots[i].clip) {
+                nextClip = clips.find(c => c.filename === filledSlots[i].clip.filename) || null;
+                break;
+            }
+        }
+        // Generate Veo prompt using Gemini Pro
+        const prompt = await generateVeoPrompt(slot.requirements, prevClip, nextClip);
+        gaps.push({
+            slotId: slot.id,
+            slotLabel: slot.label,
+            prompt,
+            priority: "high"
+        });
     }
     const result = {
         slots: filledSlots,
