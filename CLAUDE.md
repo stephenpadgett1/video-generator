@@ -47,9 +47,37 @@ Key API routes:
 Generated assets go to `data/` subdirectories: `audio/`, `video/`, `exports/`, `frames/`.
 
 ### MCP Server (`mcp/veo-clips-mcp/`)
-TypeScript MCP server for querying a pre-analyzed video clip library. Reads from `manifest.json` containing Gemini-analyzed clip metadata. Used by AI assistants to search clips by mood, subjects, visual style, edit compatibility, etc.
+TypeScript MCP server for querying and sequencing a pre-analyzed video clip library. Reads from `manifest.json` containing Gemini-analyzed clip metadata.
 
 Build: `npm run build` → outputs to `dist/server.js`
+
+**Tools:**
+- `search_clips` - Search by query, mood, subjects, visual style, duration, motion intensity, aspect ratio, clean start/end
+- `get_clip_details` - Full metadata for a specific clip
+- `get_clip_json` - Raw JSON for programmatic use
+- `list_subjects` - All subjects in library with counts
+- `list_moods` - All mood descriptors
+- `get_library_stats` - Overall statistics
+- `find_edit_compatible_clips` - Find clips that cut well together
+- `list_sequence_types` - Available sequence type definitions
+- `build_sequence` - Build a sequence with AI-powered clip selection and gap filling
+
+**build_sequence** accepts:
+```json
+{
+  "type": "mood_journey",
+  "moods": ["ominous", "tense", "peaceful"],
+  "clipsPerMood": 1,
+  "subjects": ["robot"],
+  "duration": { "target": 30, "tolerance": 5 },
+  "aspectRatio": "720:1280",
+  "mustStartClean": true,
+  "mustEndClean": true
+}
+```
+Returns filled slots with AI-selected clips, generates Veo prompts for gaps (using Gemini Pro), and warns if duration target is missed.
+
+Requires: `gcloud auth application-default login` and `GOOGLE_PROJECT_ID` env var (or configured gcloud project)
 
 ### Real-time Narrative System (`realtime-narrative/`)
 Python system for live, feedback-driven video playback from a clip library.
