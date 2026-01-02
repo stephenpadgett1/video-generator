@@ -263,7 +263,7 @@ Write a concise, effective prompt for Veo. Focus on visual description, mood, an
                     }],
                 generationConfig: {
                     temperature: 0.7,
-                    maxOutputTokens: 512
+                    maxOutputTokens: 2048
                 }
             })
         });
@@ -272,7 +272,9 @@ Write a concise, effective prompt for Veo. Focus on visual description, mood, an
             return `[Error generating prompt: ${response.status}]`;
         }
         const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        // Join all parts in case response is split across multiple parts
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        const text = parts.map((p) => p.text || '').join('');
         return text.trim();
     }
     catch (err) {
