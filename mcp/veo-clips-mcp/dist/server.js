@@ -721,6 +721,7 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
     },
 }, async (args) => {
     const { moods, clipsPerMood = 1, subjects, duration, aspectRatio, mustStartClean, mustEndClean } = args;
+    const MAX_SLOTS = 12; // Limit to prevent excessive API calls
     const filledSlots = [];
     const usedClips = new Set();
     const gapIndices = [];
@@ -728,10 +729,16 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
     let totalDuration = 0;
     let slotIndex = 0;
     const totalSlots = moods.length * clipsPerMood;
+    if (totalSlots > MAX_SLOTS) {
+        warnings.push(`Requested ${totalSlots} slots exceeds limit of ${MAX_SLOTS}. Results will be truncated.`);
+    }
     for (const mood of moods) {
         for (let i = 0; i < clipsPerMood; i++) {
+            // Enforce slot limit
+            if (slotIndex >= MAX_SLOTS)
+                break;
             const isFirst = slotIndex === 0;
-            const isLast = slotIndex === totalSlots - 1;
+            const isLast = slotIndex === Math.min(totalSlots, MAX_SLOTS) - 1;
             const slotId = `slot_${slotIndex}`;
             // Build requirements for this slot
             const requirements = { mood };
@@ -812,10 +819,12 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
             }
             slotIndex++;
         }
+        // Break outer loop if limit reached
+        if (slotIndex >= MAX_SLOTS)
+            break;
     }
-    // Generate Veo prompts for gaps
-    const gaps = [];
-    for (const gapIdx of gapIndices) {
+    // Generate Veo prompts for gaps (in parallel)
+    const gapPromises = gapIndices.map(async (gapIdx) => {
         const slot = filledSlots[gapIdx];
         // Find neighbor clips for context
         let prevClip = null;
@@ -836,13 +845,14 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
         }
         // Generate Veo prompt using Gemini Pro
         const prompt = await generateVeoPrompt(slot.requirements, prevClip, nextClip);
-        gaps.push({
+        return {
             slotId: slot.id,
             slotLabel: slot.label,
             prompt,
             priority: "high"
-        });
-    }
+        };
+    });
+    const gaps = await Promise.all(gapPromises);
     // Check for gaps warning
     if (gaps.length > 0) {
         warnings.push(`${gaps.length} gap${gaps.length > 1 ? 's' : ''} need${gaps.length === 1 ? 's' : ''} clips generated`);

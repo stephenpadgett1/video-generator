@@ -996,6 +996,8 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
       priority: "high";
     }
 
+    const MAX_SLOTS = 12;  // Limit to prevent excessive API calls
+
     const filledSlots: FilledSlot[] = [];
     const usedClips: Set<string> = new Set();
     const gapIndices: number[] = [];
@@ -1004,10 +1006,17 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
     let slotIndex = 0;
     const totalSlots = moods.length * clipsPerMood;
 
+    if (totalSlots > MAX_SLOTS) {
+      warnings.push(`Requested ${totalSlots} slots exceeds limit of ${MAX_SLOTS}. Results will be truncated.`);
+    }
+
     for (const mood of moods) {
       for (let i = 0; i < clipsPerMood; i++) {
+        // Enforce slot limit
+        if (slotIndex >= MAX_SLOTS) break;
+
         const isFirst = slotIndex === 0;
-        const isLast = slotIndex === totalSlots - 1;
+        const isLast = slotIndex === Math.min(totalSlots, MAX_SLOTS) - 1;
         const slotId = `slot_${slotIndex}`;
 
         // Build requirements for this slot
@@ -1089,11 +1098,12 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
 
         slotIndex++;
       }
+      // Break outer loop if limit reached
+      if (slotIndex >= MAX_SLOTS) break;
     }
 
-    // Generate Veo prompts for gaps
-    const gaps: Gap[] = [];
-    for (const gapIdx of gapIndices) {
+    // Generate Veo prompts for gaps (in parallel)
+    const gapPromises = gapIndices.map(async (gapIdx) => {
       const slot = filledSlots[gapIdx];
 
       // Find neighbor clips for context
@@ -1119,13 +1129,15 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
       // Generate Veo prompt using Gemini Pro
       const prompt = await generateVeoPrompt(slot.requirements, prevClip, nextClip);
 
-      gaps.push({
+      return {
         slotId: slot.id,
         slotLabel: slot.label,
         prompt,
-        priority: "high"
-      });
-    }
+        priority: "high" as const
+      };
+    });
+
+    const gaps: Gap[] = await Promise.all(gapPromises);
 
     // Check for gaps warning
     if (gaps.length > 0) {
