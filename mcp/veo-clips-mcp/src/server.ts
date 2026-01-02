@@ -278,9 +278,15 @@ interface SlotRequirements {
   mustEndClean?: boolean;
 }
 
+interface AlternativeClip {
+  filename: string;
+  reasoning: string;
+}
+
 interface SelectionResult {
   selected: string | null;
   reasoning: string;
+  alternatives: AlternativeClip[];
 }
 
 async function selectClipForSlot(
@@ -300,7 +306,8 @@ async function selectClipForSlot(
   if (candidates.length === 0) {
     return {
       selected: null,
-      reasoning: "No clips match basic filters"
+      reasoning: "No clips match basic filters",
+      alternatives: []
     };
   }
 
@@ -310,7 +317,7 @@ async function selectClipForSlot(
     return `- ${c.filename}: mood="${safeStr(c.analysis?.mood)}", subjects=[${subjects.join(', ')}], description="${safeStr(c.analysis?.description).slice(0, 150)}"`;
   }).join('\n');
 
-  const prompt = `Select the best clip for this slot, or reply "none" if none are a good fit.
+  const prompt = `Select the best clip for this slot, plus up to 3 alternatives ranked by fit.
 
 Slot requirements:
 - Mood: ${requirements.mood}
@@ -319,7 +326,16 @@ Slot requirements:
 Candidates:
 ${candidatesList}
 
-Return JSON only: { "selected": "filename" or null, "reasoning": "why" }`;
+Return JSON only:
+{
+  "selected": "filename" or null,
+  "reasoning": "why this is the best choice",
+  "alternatives": [
+    { "filename": "...", "reasoning": "why this is a viable alternative" },
+    { "filename": "...", "reasoning": "..." }
+  ]
+}
+If no clips fit, set selected to null and alternatives to empty array.`;
 
   // Step 4: Call Gemini Flash
   try {
@@ -341,7 +357,7 @@ Return JSON only: { "selected": "filename" or null, "reasoning": "why" }`;
           }],
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 256
+            maxOutputTokens: 1024
           }
         })
       }
@@ -351,7 +367,8 @@ Return JSON only: { "selected": "filename" or null, "reasoning": "why" }`;
       const error = await response.text();
       return {
         selected: null,
-        reasoning: `Gemini API error: ${response.status} - ${error}`
+        reasoning: `Gemini API error: ${response.status} - ${error}`,
+        alternatives: []
       };
     }
 
@@ -364,19 +381,22 @@ Return JSON only: { "selected": "filename" or null, "reasoning": "why" }`;
       const parsed = JSON.parse(jsonMatch[0]);
       return {
         selected: parsed.selected || null,
-        reasoning: parsed.reasoning || "No reasoning provided"
+        reasoning: parsed.reasoning || "No reasoning provided",
+        alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives : []
       };
     }
 
     return {
       selected: null,
-      reasoning: `Could not parse Gemini response: ${text.slice(0, 100)}`
+      reasoning: `Could not parse Gemini response: ${text.slice(0, 100)}`,
+      alternatives: []
     };
 
   } catch (err) {
     return {
       selected: null,
-      reasoning: `Error calling Gemini: ${err instanceof Error ? err.message : String(err)}`
+      reasoning: `Error calling Gemini: ${err instanceof Error ? err.message : String(err)}`,
+      alternatives: []
     };
   }
 }
@@ -949,17 +969,24 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
   async (args) => {
     const { moods, clipsPerMood = 1, subjects, duration, aspectRatio, mustStartClean, mustEndClean } = args;
 
+    interface ClipInfo {
+      filename: string;
+      duration: number;
+      mood: string;
+      subjects: string[];
+    }
+
+    interface AlternativeInfo extends ClipInfo {
+      reasoning: string;
+    }
+
     interface FilledSlot {
       id: string;
       label: string;
       requirements: SlotRequirements;
-      clip: {
-        filename: string;
-        duration: number;
-        mood: string;
-        subjects: string[];
-      } | null;
+      clip: ClipInfo | null;
       reasoning: string | null;
+      alternatives: AlternativeInfo[];
     }
 
     interface Gap {
@@ -1004,6 +1031,23 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
             usedClips.add(selection.selected);
             totalDuration += selectedClip.technical.durationSeconds;
 
+            // Build alternatives array, excluding used clips
+            const alternatives: AlternativeInfo[] = selection.alternatives
+              .filter(alt => !usedClips.has(alt.filename))
+              .slice(0, 3)
+              .map(alt => {
+                const altClip = clips.find(c => c.filename === alt.filename);
+                if (!altClip) return null;
+                return {
+                  filename: alt.filename,
+                  duration: altClip.technical.durationSeconds,
+                  mood: safeStr(altClip.analysis?.mood),
+                  subjects: safeArr(altClip.analysis?.subjects),
+                  reasoning: alt.reasoning
+                };
+              })
+              .filter((alt): alt is AlternativeInfo => alt !== null);
+
             filledSlots.push({
               id: slotId,
               label: mood,
@@ -1014,7 +1058,8 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
                 mood: safeStr(selectedClip.analysis?.mood),
                 subjects: safeArr(selectedClip.analysis?.subjects)
               },
-              reasoning: selection.reasoning
+              reasoning: selection.reasoning,
+              alternatives
             });
           } else {
             // Selected clip not found (shouldn't happen)
@@ -1025,7 +1070,8 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
               label: mood,
               requirements,
               clip: null,
-              reasoning: selection.reasoning
+              reasoning: selection.reasoning,
+              alternatives: []
             });
           }
         } else {
@@ -1036,7 +1082,8 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
             label: mood,
             requirements,
             clip: null,
-            reasoning: selection.reasoning
+            reasoning: selection.reasoning,
+            alternatives: []
           });
         }
 
