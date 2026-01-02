@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { readFileSync } from "fs";
+import { execSync } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -229,6 +230,154 @@ function searchClips(
   }
 
   return results;
+}
+
+// =============================================================================
+// GEMINI AI HELPERS
+// =============================================================================
+
+const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_REGION = "us-central1";
+
+// Token cache for gcloud auth
+let cachedAccessToken: string | null = null;
+let tokenFetchedAt = 0;
+const TOKEN_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
+
+function getAccessToken(): string {
+  const now = Date.now();
+  if (!cachedAccessToken || (now - tokenFetchedAt) > TOKEN_REFRESH_INTERVAL) {
+    try {
+      cachedAccessToken = execSync('gcloud auth print-access-token', { encoding: 'utf8' }).trim();
+      tokenFetchedAt = now;
+    } catch (err) {
+      throw new Error('Failed to get access token. Run: gcloud auth application-default login');
+    }
+  }
+  return cachedAccessToken;
+}
+
+function getProjectId(): string {
+  const projectId = process.env.GOOGLE_PROJECT_ID;
+  if (!projectId) {
+    try {
+      return execSync('gcloud config get-value project', { encoding: 'utf8' }).trim();
+    } catch {
+      throw new Error('GOOGLE_PROJECT_ID not set and gcloud project not configured');
+    }
+  }
+  return projectId;
+}
+
+interface SlotRequirements {
+  mood: string;
+  subjects?: string[];
+  aspectRatio?: string;
+  mustStartClean?: boolean;
+  mustEndClean?: boolean;
+}
+
+interface SelectionResult {
+  selected: string | null;
+  reasoning: string;
+}
+
+async function selectClipForSlot(
+  allClips: Clip[],
+  requirements: SlotRequirements
+): Promise<SelectionResult> {
+  // Step 1: Pre-filter candidates using existing search logic
+  const candidates = searchClips(allClips, {
+    mood: requirements.mood,
+    aspectRatio: requirements.aspectRatio,
+    startsClean: requirements.mustStartClean,
+    endsClean: requirements.mustEndClean,
+    limit: 15
+  });
+
+  // Step 2: Check if we have any candidates
+  if (candidates.length === 0) {
+    return {
+      selected: null,
+      reasoning: "No clips match basic filters"
+    };
+  }
+
+  // Step 3: Build prompt for Gemini
+  const candidatesList = candidates.map(c => {
+    const subjects = safeArr(c.analysis?.subjects);
+    return `- ${c.filename}: mood="${safeStr(c.analysis?.mood)}", subjects=[${subjects.join(', ')}], description="${safeStr(c.analysis?.description).slice(0, 150)}"`;
+  }).join('\n');
+
+  const prompt = `Select the best clip for this slot, or reply "none" if none are a good fit.
+
+Slot requirements:
+- Mood: ${requirements.mood}
+- Subjects: ${requirements.subjects?.join(', ') || "any"}
+
+Candidates:
+${candidatesList}
+
+Return JSON only: { "selected": "filename" or null, "reasoning": "why" }`;
+
+  // Step 4: Call Gemini Flash
+  try {
+    const accessToken = getAccessToken();
+    const projectId = getProjectId();
+
+    const response = await fetch(
+      `https://${GEMINI_REGION}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${GEMINI_REGION}/publishers/google/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          contents: [{
+            role: 'user',
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 256
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      return {
+        selected: null,
+        reasoning: `Gemini API error: ${response.status} - ${error}`
+      };
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Step 5: Parse response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        selected: parsed.selected || null,
+        reasoning: parsed.reasoning || "No reasoning provided"
+      };
+    }
+
+    return {
+      selected: null,
+      reasoning: `Could not parse Gemini response: ${text.slice(0, 100)}`
+    };
+
+  } catch (err) {
+    return {
+      selected: null,
+      reasoning: `Error calling Gemini: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
 }
 
 function formatClipSummary(clip: Clip): string {
