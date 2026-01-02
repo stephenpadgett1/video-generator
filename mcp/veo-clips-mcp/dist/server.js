@@ -636,56 +636,104 @@ server.registerTool("list_sequence_types", {
         ],
     };
 });
-// Tool: Build a sequence (slot generation only, no filling yet)
+// Tool: Build a sequence with AI-powered clip selection
 server.registerTool("build_sequence", {
     title: "Build Sequence",
-    description: `Build a sequence of clip slots based on a sequence type definition.
-Currently only generates empty slots - filling with actual clips coming soon.
-Returns JSON with slots array, each slot having requirements that can be used to search for matching clips.`,
+    description: `Build a sequence of clips based on a sequence type definition.
+Uses AI (Gemini Flash) to select the best clip for each slot from the library.
+Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
     inputSchema: {
         type: z.literal("mood_journey").describe("The sequence type to build"),
         moods: z.array(z.string()).describe("Sequence of moods to traverse"),
         clipsPerMood: z.number().optional().describe("Clips per mood phase (default 1)"),
-        subjects: z.array(z.string()).optional().describe("Subject filter (stored for future use)"),
+        subjects: z.array(z.string()).optional().describe("Preferred subjects for clip selection"),
         duration: z.object({
             target: z.number(),
             tolerance: z.number().optional()
-        }).optional().describe("Target duration constraints (stored for future use)"),
+        }).optional().describe("Target duration constraints (not yet implemented)"),
         aspectRatio: z.string().optional().describe("Required aspect ratio (e.g., '720:1280')"),
         mustStartClean: z.boolean().optional().describe("First clip must start cleanly"),
         mustEndClean: z.boolean().optional().describe("Last clip must end cleanly"),
     },
 }, async (args) => {
-    const { moods, clipsPerMood = 1, aspectRatio, mustStartClean, mustEndClean } = args;
-    const slots = [];
+    const { moods, clipsPerMood = 1, subjects, aspectRatio, mustStartClean, mustEndClean } = args;
+    const filledSlots = [];
+    const usedClips = new Set();
+    const gaps = [];
+    const warnings = [];
+    let totalDuration = 0;
     let slotIndex = 0;
     const totalSlots = moods.length * clipsPerMood;
     for (const mood of moods) {
         for (let i = 0; i < clipsPerMood; i++) {
             const isFirst = slotIndex === 0;
             const isLast = slotIndex === totalSlots - 1;
+            const slotId = `slot_${slotIndex}`;
+            // Build requirements for this slot
             const requirements = { mood };
+            if (subjects && subjects.length > 0)
+                requirements.subjects = subjects;
             if (aspectRatio)
                 requirements.aspectRatio = aspectRatio;
             if (mustStartClean && isFirst)
                 requirements.mustStartClean = true;
             if (mustEndClean && isLast)
                 requirements.mustEndClean = true;
-            slots.push({
-                id: `slot_${slotIndex}`,
-                label: mood,
-                requirements,
-                clip: null,
-                score: null
-            });
+            // Filter out already-used clips from candidates
+            const availableClips = clips.filter(c => !usedClips.has(c.filename));
+            // Select best clip for this slot
+            const selection = await selectClipForSlot(availableClips, requirements);
+            if (selection.selected) {
+                // Find the selected clip to get its metadata
+                const selectedClip = clips.find(c => c.filename === selection.selected);
+                if (selectedClip) {
+                    usedClips.add(selection.selected);
+                    totalDuration += selectedClip.technical.durationSeconds;
+                    filledSlots.push({
+                        id: slotId,
+                        label: mood,
+                        requirements,
+                        clip: {
+                            filename: selectedClip.filename,
+                            duration: selectedClip.technical.durationSeconds,
+                            mood: safeStr(selectedClip.analysis?.mood),
+                            subjects: safeArr(selectedClip.analysis?.subjects)
+                        },
+                        reasoning: selection.reasoning
+                    });
+                }
+                else {
+                    // Selected clip not found (shouldn't happen)
+                    warnings.push(`${slotId}: Selected clip "${selection.selected}" not found in library`);
+                    gaps.push(slotId);
+                    filledSlots.push({
+                        id: slotId,
+                        label: mood,
+                        requirements,
+                        clip: null,
+                        reasoning: selection.reasoning
+                    });
+                }
+            }
+            else {
+                // No clip selected - this is a gap
+                gaps.push(slotId);
+                filledSlots.push({
+                    id: slotId,
+                    label: mood,
+                    requirements,
+                    clip: null,
+                    reasoning: selection.reasoning
+                });
+            }
             slotIndex++;
         }
     }
     const result = {
-        slots,
-        gaps: [],
-        totalDuration: 0,
-        warnings: []
+        slots: filledSlots,
+        gaps,
+        totalDuration,
+        warnings
     };
     return {
         content: [
