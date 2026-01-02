@@ -704,7 +704,7 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
         mustEndClean: z.boolean().optional().describe("Last clip must end cleanly"),
     },
 }, async (args) => {
-    const { moods, clipsPerMood = 1, subjects, aspectRatio, mustStartClean, mustEndClean } = args;
+    const { moods, clipsPerMood = 1, subjects, duration, aspectRatio, mustStartClean, mustEndClean } = args;
     const filledSlots = [];
     const usedClips = new Set();
     const gapIndices = [];
@@ -806,6 +806,23 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
             prompt,
             priority: "high"
         });
+    }
+    // Check for gaps warning
+    if (gaps.length > 0) {
+        warnings.push(`${gaps.length} gap${gaps.length > 1 ? 's' : ''} need${gaps.length === 1 ? 's' : ''} clips generated`);
+    }
+    // Check duration against target
+    if (duration?.target) {
+        const tolerance = duration.tolerance ?? 0;
+        const minDuration = duration.target - tolerance;
+        const maxDuration = duration.target + tolerance;
+        if (totalDuration < minDuration) {
+            const needed = Math.ceil(duration.target - totalDuration);
+            warnings.push(`Total duration ${totalDuration}s, target was ${duration.target}s - need ${needed} more seconds of clips`);
+        }
+        else if (totalDuration > maxDuration) {
+            warnings.push(`Total duration ${totalDuration}s exceeds target ${duration.target}s`);
+        }
     }
     const result = {
         slots: filledSlots,
