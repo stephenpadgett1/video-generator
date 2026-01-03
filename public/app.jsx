@@ -87,6 +87,8 @@ function VideoPipelineControl() {
   const [generatorBrief, setGeneratorBrief] = useState('');
   const [youtubeMetadata, setYoutubeMetadata] = useState(null);
   const [youtubeMetadataLoading, setYoutubeMetadataLoading] = useState(false);
+  const [framePrompts, setFramePrompts] = useState({});  // { shotId: { firstFrame, lastFrame, notes } }
+  const [framePromptsLoading, setFramePromptsLoading] = useState({});  // { shotId: true/false }
 
   // Load state from server on mount
   useEffect(() => {
@@ -424,6 +426,30 @@ Generate metadata optimized for YouTube Shorts discovery. Return JSON only:
     setConfirmReset(false);
     setSelectedForAssembly({});
     setAiReviewResult({});
+    setFramePrompts({});
+  };
+
+  const generateFramePrompts = async (shotId, veoPrompt) => {
+    setFramePromptsLoading(prev => ({ ...prev, [shotId]: true }));
+    try {
+      const response = await fetch('/api/generate-frame-prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ veoPrompt })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to generate frame prompts');
+      }
+
+      const data = await response.json();
+      setFramePrompts(prev => ({ ...prev, [shotId]: data }));
+    } catch (err) {
+      alert('Error generating frame prompts: ' + err.message);
+    } finally {
+      setFramePromptsLoading(prev => ({ ...prev, [shotId]: false }));
+    }
   };
 
   const generateNewProject = async () => {
@@ -1581,6 +1607,51 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
 
                     <div className="label" style={{ marginTop: '20px' }}>Veo Prompt</div>
                     <div className="prompt-box">{shot.veo_prompt}</div>
+
+                    <div style={{ marginTop: '12px' }}>
+                      <button
+                        className="btn"
+                        onClick={() => generateFramePrompts(activeShot, shot.veo_prompt)}
+                        disabled={framePromptsLoading[activeShot]}
+                        style={{ marginBottom: '12px' }}
+                      >
+                        {framePromptsLoading[activeShot] ? 'Generating...' : 'Generate Frame Prompts'}
+                      </button>
+
+                      {framePrompts[activeShot] && (
+                        <div style={{ marginTop: '8px' }}>
+                          <div className="label">First Frame</div>
+                          <div className="prompt-box" style={{ marginBottom: '8px' }}>
+                            {framePrompts[activeShot].firstFrame}
+                          </div>
+                          <button
+                            className="btn"
+                            style={{ padding: '4px 8px', fontSize: '11px', marginBottom: '12px' }}
+                            onClick={() => navigator.clipboard.writeText(framePrompts[activeShot].firstFrame)}
+                          >
+                            Copy
+                          </button>
+
+                          <div className="label">Last Frame</div>
+                          <div className="prompt-box" style={{ marginBottom: '8px' }}>
+                            {framePrompts[activeShot].lastFrame}
+                          </div>
+                          <button
+                            className="btn"
+                            style={{ padding: '4px 8px', fontSize: '11px', marginBottom: '12px' }}
+                            onClick={() => navigator.clipboard.writeText(framePrompts[activeShot].lastFrame)}
+                          >
+                            Copy
+                          </button>
+
+                          {framePrompts[activeShot].notes && (
+                            <div style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
+                              {framePrompts[activeShot].notes}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {shot.vo && (
                       <>
