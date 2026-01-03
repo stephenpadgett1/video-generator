@@ -554,6 +554,120 @@ Generate the first and last frame image prompts.`;
   }
 });
 
+app.post('/api/breakdown-shot', async (req, res) => {
+  const config = loadConfig();
+  if (!config.claudeKey) {
+    return res.status(400).json({ error: 'No Claude API key configured' });
+  }
+
+  const { description, duration, firstFramePrompt, lastFramePrompt, context } = req.body;
+  if (!description) {
+    return res.status(400).json({ error: 'description is required' });
+  }
+  if (!duration) {
+    return res.status(400).json({ error: 'duration is required' });
+  }
+
+  const systemPrompt = `You are a cinematographer breaking down a shot into individual takes for AI video generation.
+
+CONSTRAINTS:
+- Regular generation: 4, 6, or 8 seconds (use for first take, or when you need compositional control)
+- Extend: exactly 7 seconds (continues seamlessly from previous take's final frames)
+
+TRANSITION TYPES:
+- "first_frame": Use a generated still image as the starting point. More creative control over composition.
+- "last_frame": Use a generated still image as the ending point. More creative control over composition.
+- "extend": Continue directly from the previous take's video. Seamless motion, less compositional control.
+- null: No transition (first take's transitionIn when no firstFramePrompt, last take's transitionOut when no lastFramePrompt)
+
+For each take, provide:
+1. Duration (4, 6, or 8 for regular; 7 for extend-based takes after the first)
+2. A detailed Veo prompt describing the action, camera, lighting, style
+3. transitionIn: How this take connects FROM the previous take
+4. transitionOut: How this take connects TO the next take
+5. transitionFrameHint: If using first_frame or last_frame transitions, describe what that frame should show
+
+GUIDELINES:
+- First take's transitionIn: "first_frame" if firstFramePrompt provided, else null
+- Last take's transitionOut: "last_frame" if lastFramePrompt provided, else null
+- Use "extend" for continuous motion within a shot (camera moves, subject actions continuing)
+- Use "first_frame"/"last_frame" for beat changes, composition shifts, or when you need precise framing
+- Each Veo prompt should be detailed and self-contained but maintain style/subject consistency
+- Total durations should approximately match target duration
+
+OUTPUT FORMAT:
+Return JSON only, no markdown:
+{
+  "takes": [
+    {
+      "duration": 8,
+      "veoPrompt": "detailed prompt...",
+      "transitionIn": null,
+      "transitionOut": "extend",
+      "transitionFrameHint": null
+    },
+    {
+      "duration": 7,
+      "veoPrompt": "detailed prompt continuing the action...",
+      "transitionIn": "extend",
+      "transitionOut": "last_frame",
+      "transitionFrameHint": "Description of the final frame composition"
+    }
+  ],
+  "notes": "Brief explanation of breakdown choices"
+}`;
+
+  const userMessage = `Shot description: "${description}"
+Target duration: ${duration} seconds
+${firstFramePrompt ? `First frame prompt: ${firstFramePrompt}` : 'No first frame prompt provided'}
+${lastFramePrompt ? `Last frame prompt: ${lastFramePrompt}` : 'No last frame prompt provided'}
+${context ? `Context: ${context}` : ''}
+
+Break this shot into takes.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': config.claudeKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Shot breakdown error:', error);
+      return res.status(response.status).json({ error });
+    }
+
+    const data = await response.json();
+    const content = data.content?.[0]?.text;
+
+    if (!content) {
+      return res.status(500).json({ error: 'No response content from Claude' });
+    }
+
+    try {
+      const cleaned = content.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      res.json(parsed);
+    } catch (parseErr) {
+      console.error('Failed to parse shot breakdown response:', content);
+      res.status(500).json({ error: 'Failed to parse response as JSON', raw: content });
+    }
+  } catch (err) {
+    console.error('Shot breakdown error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============ Gemini Video Analysis ============
 
 app.post('/api/gemini/analyze-video', async (req, res) => {
