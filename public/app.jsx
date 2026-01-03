@@ -89,6 +89,8 @@ function VideoPipelineControl() {
   const [youtubeMetadataLoading, setYoutubeMetadataLoading] = useState(false);
   const [framePrompts, setFramePrompts] = useState({});  // { shotId: { firstFrame, lastFrame, notes } }
   const [framePromptsLoading, setFramePromptsLoading] = useState({});  // { shotId: true/false }
+  const [shotBreakdown, setShotBreakdown] = useState({});  // { shotId: { takes: [...], notes } }
+  const [shotBreakdownLoading, setShotBreakdownLoading] = useState({});  // { shotId: true/false }
 
   // Load state from server on mount
   useEffect(() => {
@@ -427,6 +429,7 @@ Generate metadata optimized for YouTube Shorts discovery. Return JSON only:
     setSelectedForAssembly({});
     setAiReviewResult({});
     setFramePrompts({});
+    setShotBreakdown({});
   };
 
   const generateFramePrompts = async (shotId, veoPrompt) => {
@@ -449,6 +452,35 @@ Generate metadata optimized for YouTube Shorts discovery. Return JSON only:
       alert('Error generating frame prompts: ' + err.message);
     } finally {
       setFramePromptsLoading(prev => ({ ...prev, [shotId]: false }));
+    }
+  };
+
+  const breakdownShot = async (shotId, description, duration) => {
+    setShotBreakdownLoading(prev => ({ ...prev, [shotId]: true }));
+    try {
+      const fp = framePrompts[shotId];
+      const response = await fetch('/api/breakdown-shot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description,
+          duration,
+          firstFramePrompt: fp?.firstFrame,
+          lastFramePrompt: fp?.lastFrame
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to breakdown shot');
+      }
+
+      const data = await response.json();
+      setShotBreakdown(prev => ({ ...prev, [shotId]: data }));
+    } catch (err) {
+      alert('Error breaking down shot: ' + err.message);
+    } finally {
+      setShotBreakdownLoading(prev => ({ ...prev, [shotId]: false }));
     }
   };
 
@@ -1647,6 +1679,90 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
                           {framePrompts[activeShot].notes && (
                             <div style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
                               {framePrompts[activeShot].notes}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #333' }}>
+                      <div className="label">Shot Breakdown</div>
+                      <button
+                        className="btn"
+                        onClick={() => breakdownShot(activeShot, shot.veo_prompt, shot.vo?.target_seconds || 8)}
+                        disabled={shotBreakdownLoading[activeShot]}
+                        style={{ marginTop: '8px', marginBottom: '12px' }}
+                      >
+                        {shotBreakdownLoading[activeShot] ? 'Breaking down...' : 'Breakdown into Takes'}
+                      </button>
+
+                      {shotBreakdown[activeShot] && (
+                        <div style={{ marginTop: '8px' }}>
+                          {shotBreakdown[activeShot].takes.map((take, index) => (
+                            <div
+                              key={index}
+                              style={{
+                                background: '#1a1a1a',
+                                border: '1px solid #333',
+                                padding: '12px',
+                                marginBottom: '8px',
+                                borderRadius: '4px'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Take {index + 1}</span>
+                                <span style={{
+                                  fontSize: '11px',
+                                  color: '#888',
+                                  background: '#222',
+                                  padding: '2px 6px',
+                                  borderRadius: '3px'
+                                }}>
+                                  {take.duration}s
+                                </span>
+                                {take.transitionIn && (
+                                  <span style={{
+                                    fontSize: '10px',
+                                    color: '#4ade80',
+                                    background: '#1f2a1f',
+                                    padding: '2px 6px',
+                                    borderRadius: '3px'
+                                  }}>
+                                    ← {take.transitionIn}
+                                  </span>
+                                )}
+                                {take.transitionOut && (
+                                  <span style={{
+                                    fontSize: '10px',
+                                    color: '#60a5fa',
+                                    background: '#1a2332',
+                                    padding: '2px 6px',
+                                    borderRadius: '3px'
+                                  }}>
+                                    {take.transitionOut} →
+                                  </span>
+                                )}
+                              </div>
+                              <div className="prompt-box" style={{ marginBottom: '8px', fontSize: '12px' }}>
+                                {take.veoPrompt}
+                              </div>
+                              <button
+                                className="btn"
+                                style={{ padding: '4px 8px', fontSize: '11px' }}
+                                onClick={() => navigator.clipboard.writeText(take.veoPrompt)}
+                              >
+                                Copy
+                              </button>
+                              {take.transitionFrameHint && (
+                                <div style={{ fontSize: '11px', color: '#888', marginTop: '8px' }}>
+                                  Frame hint: {take.transitionFrameHint}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {shotBreakdown[activeShot].notes && (
+                            <div style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
+                              {shotBreakdown[activeShot].notes}
                             </div>
                           )}
                         </div>
