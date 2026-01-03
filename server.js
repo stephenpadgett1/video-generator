@@ -541,7 +541,8 @@ Generate the first and last frame image prompts.`;
     }
 
     try {
-      const parsed = JSON.parse(content);
+      const cleaned = content.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
       res.json(parsed);
     } catch (parseErr) {
       console.error('Failed to parse frame prompts response:', content);
