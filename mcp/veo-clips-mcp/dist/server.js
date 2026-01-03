@@ -885,6 +885,61 @@ Returns JSON with filled slots, gaps (unfilled slots), and total duration.`,
         ],
     };
 });
+// Tool: Call the video generator API
+server.registerTool("call_video_generator_api", {
+    title: "Call Video Generator API",
+    description: "Make HTTP requests to the video generator API running at localhost:3000. Use this to access endpoints like /api/generate-frame-prompts, /api/breakdown-shot, /api/veo/generate, etc.",
+    inputSchema: {
+        endpoint: z.string().describe("API endpoint path (e.g., '/api/generate-frame-prompts')"),
+        method: z.enum(["GET", "POST"]).optional().default("POST").describe("HTTP method (default: POST)"),
+        body: z.record(z.string(), z.any()).optional().describe("Request body for POST requests"),
+    },
+}, async (args) => {
+    const { endpoint, method = "POST", body } = args;
+    const url = `http://localhost:3000${endpoint}`;
+    try {
+        const fetchOptions = {
+            method,
+            headers: {
+                "Content-Type": "application/json",
+            },
+        };
+        if (method === "POST" && body) {
+            fetchOptions.body = JSON.stringify(body);
+        }
+        const response = await fetch(url, fetchOptions);
+        if (!response.ok) {
+            const errorText = await response.text();
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Error ${response.status}: ${errorText}`,
+                    },
+                ],
+            };
+        }
+        const data = await response.json();
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: JSON.stringify(data, null, 2),
+                },
+            ],
+        };
+    }
+    catch (err) {
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: `Request failed: ${err instanceof Error ? err.message : String(err)}`,
+                },
+            ],
+        };
+    }
+});
 // =============================================================================
 // RESOURCES
 // =============================================================================
