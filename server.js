@@ -571,8 +571,9 @@ app.post('/api/breakdown-shot', async (req, res) => {
   const systemPrompt = `You are a cinematographer breaking down a shot into individual takes for AI video generation.
 
 CONSTRAINTS:
-- Regular generation: 4, 6, or 8 seconds (use for first take, or when you need compositional control)
-- Extend: exactly 7 seconds (continues seamlessly from previous take's final frames)
+- Regular generation durations: ONLY 4, 6, or 8 seconds (no other values)
+- Extend: exactly 7 seconds (continues seamlessly from previous take)
+- Total duration should approximately match target, but individual takes must use valid durations
 
 TRANSITION TYPES:
 - "first_frame": Use a generated still image as the starting point. More creative control over composition.
