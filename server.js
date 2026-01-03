@@ -39,6 +39,36 @@ function saveConfig(config) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
+// ============ Job Queue ============
+
+const JOBS_PATH = path.join(__dirname, 'jobs.json');
+
+function loadJobs() {
+  try {
+    if (fs.existsSync(JOBS_PATH)) {
+      return JSON.parse(fs.readFileSync(JOBS_PATH, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Error loading jobs:', err);
+  }
+  return [];
+}
+
+function saveJobs(jobs) {
+  fs.writeFileSync(JOBS_PATH, JSON.stringify(jobs, null, 2));
+}
+
+function updateJob(jobId, updates) {
+  const jobs = loadJobs();
+  const index = jobs.findIndex(j => j.id === jobId);
+  if (index !== -1) {
+    jobs[index] = { ...jobs[index], ...updates, updatedAt: new Date().toISOString() };
+    saveJobs(jobs);
+    return jobs[index];
+  }
+  return null;
+}
+
 // ============ Config Routes ============
 
 app.get('/api/config', (req, res) => {
@@ -175,6 +205,59 @@ app.use('/video', express.static(path.join(__dirname, 'data', 'video')));
 // Serve generated images
 app.use('/generated-images', express.static(path.join(__dirname, 'generated-images')));
 
+// ============ Job Queue Routes ============
+
+app.post('/api/jobs', async (req, res) => {
+  const { type, input } = req.body;
+
+  if (!type || !input) {
+    return res.status(400).json({ error: 'type and input are required' });
+  }
+
+  if (!['veo-generate', 'imagen-generate'].includes(type)) {
+    return res.status(400).json({ error: 'Unsupported job type' });
+  }
+
+  const job = {
+    id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    type,
+    status: 'pending',
+    input,
+    result: null,
+    error: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  const jobs = loadJobs();
+  jobs.unshift(job);
+  saveJobs(jobs);
+
+  // Start processing based on type
+  if (type === 'veo-generate') {
+    processVeoJob(job.id, input);
+  } else if (type === 'imagen-generate') {
+    processImagenJob(job.id, input);
+  }
+
+  res.json({ jobId: job.id });
+});
+
+app.get('/api/jobs/:id', (req, res) => {
+  const jobs = loadJobs();
+  const job = jobs.find(j => j.id === req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  res.json(job);
+});
+
+app.get('/api/jobs', (req, res) => {
+  const jobs = loadJobs();
+  const limit = parseInt(req.query.limit) || 50;
+  res.json(jobs.slice(0, limit));
+});
+
 // ============ Veo (Vertex AI) Proxy ============
 
 // Helper to get OAuth2 access token from service account
@@ -216,6 +299,197 @@ async function getVeoAccessToken(config) {
   
   const data = await response.json();
   return { accessToken: data.access_token, projectId: serviceAccount.project_id };
+}
+
+// Background polling for Veo jobs
+async function pollVeoJob(jobId, operationName) {
+  const POLL_INTERVAL = 10000; // 10 seconds
+
+  const poll = async () => {
+    try {
+      const config = loadConfig();
+      const { accessToken, projectId } = await getVeoAccessToken(config);
+
+      const response = await fetch(
+        `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/veo-3.1-generate-preview:fetchPredictOperation`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({ operationName })
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error(`Veo job ${jobId} poll error:`, error);
+        updateJob(jobId, { status: 'error', error: `Poll failed: ${error}` });
+        return;
+      }
+
+      const data = await response.json();
+      console.log(`Veo job ${jobId} poll:`, data.done ? 'DONE' : 'pending');
+
+      if (data.done) {
+        if (data.error) {
+          updateJob(jobId, { status: 'error', error: data.error.message });
+        } else {
+          const videoUri = data.response?.videos?.[0]?.uri;
+          updateJob(jobId, {
+            status: 'complete',
+            result: { operationName, videoUri, response: data.response }
+          });
+        }
+      } else {
+        setTimeout(poll, POLL_INTERVAL);
+      }
+    } catch (err) {
+      console.error(`Veo job ${jobId} poll error:`, err);
+      updateJob(jobId, { status: 'error', error: err.message });
+    }
+  };
+
+  setTimeout(poll, POLL_INTERVAL);
+}
+
+// Process Veo generation job
+async function processVeoJob(jobId, input) {
+  updateJob(jobId, { status: 'processing' });
+
+  try {
+    const config = loadConfig();
+    const { accessToken, projectId } = await getVeoAccessToken(config);
+    const { prompt, aspectRatio = '9:16', durationSeconds = 8, referenceImagePath, lastFramePath } = input;
+
+    const dur = parseInt(durationSeconds) || 8;
+    const validDuration = dur <= 5 ? 4 : dur <= 7 ? 6 : 8;
+
+    let firstFrameBase64 = null;
+    if (referenceImagePath) {
+      const imagePath = path.isAbsolute(referenceImagePath) ? referenceImagePath : path.join(__dirname, referenceImagePath);
+      if (fs.existsSync(imagePath)) {
+        firstFrameBase64 = fs.readFileSync(imagePath).toString('base64');
+      }
+    }
+
+    let lastFrameBase64 = null;
+    if (lastFramePath) {
+      const imagePath = path.isAbsolute(lastFramePath) ? lastFramePath : path.join(__dirname, lastFramePath);
+      if (fs.existsSync(imagePath)) {
+        lastFrameBase64 = fs.readFileSync(imagePath).toString('base64');
+      }
+    }
+
+    const instance = { prompt };
+    if (firstFrameBase64) {
+      instance.image = { bytesBase64Encoded: firstFrameBase64, mimeType: 'image/png' };
+    }
+    if (lastFrameBase64) {
+      instance.lastFrame = { bytesBase64Encoded: lastFrameBase64, mimeType: 'image/png' };
+    }
+
+    const requestBody = {
+      instances: [instance],
+      parameters: { aspectRatio, durationSeconds: validDuration }
+    };
+
+    console.log(`Veo job ${jobId} starting generation...`);
+
+    const response = await fetch(
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/veo-3.1-generate-preview:predictLongRunning`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(requestBody)
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      updateJob(jobId, { status: 'error', error });
+      return;
+    }
+
+    const data = await response.json();
+    const operationName = data.name;
+    console.log(`Veo job ${jobId} operation started:`, operationName);
+
+    updateJob(jobId, { result: { operationName } });
+    pollVeoJob(jobId, operationName);
+  } catch (err) {
+    console.error(`Veo job ${jobId} error:`, err);
+    updateJob(jobId, { status: 'error', error: err.message });
+  }
+}
+
+// Process Imagen generation job
+async function processImagenJob(jobId, input) {
+  updateJob(jobId, { status: 'processing' });
+
+  try {
+    const config = loadConfig();
+    const { accessToken, projectId } = await getVeoAccessToken(config);
+    const { prompt, aspectRatio = '9:16' } = input;
+
+    const requestBody = {
+      instances: [{ prompt }],
+      parameters: { sampleCount: 1, aspectRatio }
+    };
+
+    console.log(`Imagen job ${jobId} starting generation...`);
+
+    const response = await fetch(
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/imagen-3.0-generate-002:predict`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(requestBody)
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      updateJob(jobId, { status: 'error', error });
+      return;
+    }
+
+    const data = await response.json();
+    const base64 = data.predictions?.[0]?.bytesBase64Encoded;
+
+    if (!base64) {
+      updateJob(jobId, { status: 'error', error: 'No image data in response' });
+      return;
+    }
+
+    const imagesDir = path.join(__dirname, 'generated-images');
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const filename = `frame_${timestamp}_${randomId}.png`;
+    const filepath = path.join(imagesDir, filename);
+
+    fs.writeFileSync(filepath, Buffer.from(base64, 'base64'));
+    console.log(`Imagen job ${jobId} saved:`, filepath);
+
+    updateJob(jobId, {
+      status: 'complete',
+      result: { imagePath: filepath, imageUrl: `/generated-images/${filename}` }
+    });
+  } catch (err) {
+    console.error(`Imagen job ${jobId} error:`, err);
+    updateJob(jobId, { status: 'error', error: err.message });
+  }
 }
 
 app.post('/api/veo/generate', async (req, res) => {
