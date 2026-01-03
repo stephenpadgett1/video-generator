@@ -669,6 +669,59 @@ Break this shot into takes.`;
   }
 });
 
+app.post('/api/generate-image', async (req, res) => {
+  const config = loadConfig();
+
+  try {
+    const { accessToken, projectId } = await getVeoAccessToken(config);
+    const { prompt, aspectRatio = '9:16' } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: 'prompt is required' });
+    }
+
+    const requestBody = {
+      instances: [{ prompt }],
+      parameters: {
+        sampleCount: 1,
+        aspectRatio: aspectRatio
+      }
+    };
+
+    console.log('Imagen request:', JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/imagen-3.0-generate-002:predict`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(requestBody)
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Imagen error:', error);
+      return res.status(response.status).json({ error });
+    }
+
+    const data = await response.json();
+    const base64 = data.predictions?.[0]?.bytesBase64Encoded;
+
+    if (!base64) {
+      return res.status(500).json({ error: 'No image data in response' });
+    }
+
+    res.json({ base64 });
+  } catch (err) {
+    console.error('Image generation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============ Gemini Video Analysis ============
 
 app.post('/api/gemini/analyze-video', async (req, res) => {
