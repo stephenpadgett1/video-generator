@@ -172,6 +172,9 @@ app.use('/audio', express.static(path.join(__dirname, 'data', 'audio')));
 // Serve video files
 app.use('/video', express.static(path.join(__dirname, 'data', 'video')));
 
+// Serve generated images
+app.use('/generated-images', express.static(path.join(__dirname, 'generated-images')));
+
 // ============ Veo (Vertex AI) Proxy ============
 
 // Helper to get OAuth2 access token from service account
@@ -715,7 +718,24 @@ app.post('/api/generate-image', async (req, res) => {
       return res.status(500).json({ error: 'No image data in response' });
     }
 
-    res.json({ base64 });
+    // Save to disk
+    const imagesDir = path.join(__dirname, 'generated-images');
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const filename = `frame_${timestamp}_${randomId}.png`;
+    const filepath = path.join(imagesDir, filename);
+
+    fs.writeFileSync(filepath, Buffer.from(base64, 'base64'));
+    console.log('Saved image to:', filepath);
+
+    res.json({
+      imagePath: filepath,
+      imageUrl: `/generated-images/${filename}`
+    });
   } catch (err) {
     console.error('Image generation error:', err);
     res.status(500).json({ error: err.message });
