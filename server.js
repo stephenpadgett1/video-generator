@@ -472,6 +472,87 @@ app.post('/api/claude', async (req, res) => {
   }
 });
 
+app.post('/api/generate-frame-prompts', async (req, res) => {
+  const config = loadConfig();
+  if (!config.claudeKey) {
+    return res.status(400).json({ error: 'No Claude API key configured' });
+  }
+
+  const { veoPrompt, shotContext } = req.body;
+  if (!veoPrompt) {
+    return res.status(400).json({ error: 'veoPrompt is required' });
+  }
+
+  const systemPrompt = `You are a cinematographer breaking down a video shot into its opening and closing frames for an AI image generator.
+
+Given a video prompt describing action/motion, produce two image prompts:
+1. FIRST FRAME: The scene at the moment before the main action begins. Establish setting, lighting, composition, and any subjects in their starting positions.
+2. LAST FRAME: The scene at the moment after the main action completes. Show the end state, results of the action, final positions.
+
+GUIDELINES:
+- Remove all motion verbs (walking, moving, flying, etc.) - describe frozen moments
+- Preserve: camera angle, lighting style, color palette, visual aesthetic
+- Add compositional details appropriate for stills (depth of field, framing, negative space)
+- Be specific about subject positions, poses, expressions
+- Keep the same level of detail/style as the original prompt
+- If the original prompt implies a transformation, first frame = before state, last frame = after state
+
+OUTPUT FORMAT:
+Return JSON only, no markdown:
+{
+  "firstFrame": "detailed image prompt for opening frame",
+  "lastFrame": "detailed image prompt for closing frame",
+  "notes": "brief explanation of the implied action/transformation between frames"
+}`;
+
+  const userMessage = `Video prompt: "${veoPrompt}"
+
+${shotContext ? `Additional context: ${shotContext}` : ''}
+
+Generate the first and last frame image prompts.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': config.claudeKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Frame prompts generation error:', error);
+      return res.status(response.status).json({ error });
+    }
+
+    const data = await response.json();
+    const content = data.content?.[0]?.text;
+
+    if (!content) {
+      return res.status(500).json({ error: 'No response content from Claude' });
+    }
+
+    try {
+      const parsed = JSON.parse(content);
+      res.json(parsed);
+    } catch (parseErr) {
+      console.error('Failed to parse frame prompts response:', content);
+      res.status(500).json({ error: 'Failed to parse response as JSON', raw: content });
+    }
+  } catch (err) {
+    console.error('Frame prompts generation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============ Gemini Video Analysis ============
 
 app.post('/api/gemini/analyze-video', async (req, res) => {
