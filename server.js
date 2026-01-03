@@ -220,7 +220,7 @@ app.post('/api/veo/generate', async (req, res) => {
   
   try {
     const { accessToken, projectId } = await getVeoAccessToken(config);
-    const { prompt, aspectRatio = '9:16', durationSeconds = 8, referenceImageBase64 } = req.body;
+    const { prompt, aspectRatio = '9:16', durationSeconds = 8, referenceImageBase64, lastFrameBase64 } = req.body;
     
     // Veo 3.1 only supports 4, 6, or 8 seconds - snap to nearest valid value
     const dur = parseInt(durationSeconds) || 8;
@@ -230,13 +230,29 @@ app.post('/api/veo/generate', async (req, res) => {
       prompt: prompt
     };
     
-    // Add reference image if provided (image-to-video)
+    // Add reference image if provided (first frame for image-to-video)
     if (referenceImageBase64) {
       instance.image = {
         bytesBase64Encoded: referenceImageBase64,
         mimeType: 'image/jpeg'
       };
-      console.log('Using reference image for generation');
+    }
+
+    // Add last frame if provided (for bookending generated video)
+    if (lastFrameBase64) {
+      instance.lastFrame = {
+        bytesBase64Encoded: lastFrameBase64,
+        mimeType: 'image/jpeg'
+      };
+    }
+
+    // Log which frames are being used
+    if (referenceImageBase64 && lastFrameBase64) {
+      console.log('Using first + last frame for generation');
+    } else if (referenceImageBase64) {
+      console.log('Using first frame for generation');
+    } else if (lastFrameBase64) {
+      console.log('Using last frame for generation');
     }
     
     const requestBody = {
@@ -247,7 +263,7 @@ app.post('/api/veo/generate', async (req, res) => {
       }
     };
     
-    console.log('Veo request:', JSON.stringify({ ...requestBody, instances: [{ ...instance, image: instance.image ? '[BASE64_IMAGE]' : undefined }] }, null, 2));
+    console.log('Veo request:', JSON.stringify({ ...requestBody, instances: [{ ...instance, image: instance.image ? '[BASE64_IMAGE]' : undefined, lastFrame: instance.lastFrame ? '[BASE64_IMAGE]' : undefined }] }, null, 2));
     console.log('Project ID:', projectId);
 
     // Use Vertex AI endpoint
