@@ -220,41 +220,61 @@ async function getVeoAccessToken(config) {
 
 app.post('/api/veo/generate', async (req, res) => {
   const config = loadConfig();
-  
+
   try {
     const { accessToken, projectId } = await getVeoAccessToken(config);
-    const { prompt, aspectRatio = '9:16', durationSeconds = 8, referenceImageBase64, lastFrameBase64 } = req.body;
-    
+    const { prompt, aspectRatio = '9:16', durationSeconds = 8, referenceImageBase64, lastFrameBase64, referenceImagePath, lastFramePath } = req.body;
+
     // Veo 3.1 only supports 4, 6, or 8 seconds - snap to nearest valid value
     const dur = parseInt(durationSeconds) || 8;
     const validDuration = dur <= 5 ? 4 : dur <= 7 ? 6 : 8;
-    
+
+    // Resolve first frame: prefer base64, fallback to reading from path
+    let firstFrameBase64 = referenceImageBase64;
+    if (!firstFrameBase64 && referenceImagePath) {
+      const imagePath = path.isAbsolute(referenceImagePath) ? referenceImagePath : path.join(__dirname, referenceImagePath);
+      if (fs.existsSync(imagePath)) {
+        firstFrameBase64 = fs.readFileSync(imagePath).toString('base64');
+        console.log('Read first frame from:', imagePath);
+      }
+    }
+
+    // Resolve last frame: prefer base64, fallback to reading from path
+    let finalLastFrameBase64 = lastFrameBase64;
+    if (!finalLastFrameBase64 && lastFramePath) {
+      const imagePath = path.isAbsolute(lastFramePath) ? lastFramePath : path.join(__dirname, lastFramePath);
+      if (fs.existsSync(imagePath)) {
+        finalLastFrameBase64 = fs.readFileSync(imagePath).toString('base64');
+        console.log('Read last frame from:', imagePath);
+      }
+    }
+
     const instance = {
       prompt: prompt
     };
-    
+
     // Add reference image if provided (first frame for image-to-video)
-    if (referenceImageBase64) {
+    if (firstFrameBase64) {
       instance.image = {
-        bytesBase64Encoded: referenceImageBase64,
-        mimeType: 'image/jpeg'
+        bytesBase64Encoded: firstFrameBase64,
+        mimeType: 'image/png'
       };
     }
 
     // Add last frame if provided (for bookending generated video)
-    if (lastFrameBase64) {
+    if (finalLastFrameBase64) {
       instance.lastFrame = {
-        bytesBase64Encoded: lastFrameBase64,
-        mimeType: 'image/jpeg'
+        bytesBase64Encoded: finalLastFrameBase64,
+        mimeType: 'image/png'
       };
     }
 
     // Log which frames are being used
-    if (referenceImageBase64 && lastFrameBase64) {
+    if (firstFrameBase64 && finalLastFrameBase64) {
       console.log('Using first + last frame for generation');
-    } else if (referenceImageBase64) {
+    } else if (firstFrameBase64) {
       console.log('Using first frame for generation');
-    } else if (lastFrameBase64) {
+    } else if (finalLastFrameBase64) {
       console.log('Using last frame for generation');
     }
     
