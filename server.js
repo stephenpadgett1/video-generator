@@ -137,6 +137,66 @@ app.delete('/api/project', (req, res) => {
   res.json({ success: true });
 });
 
+// Get all projects (list)
+app.get('/api/projects', (req, res) => {
+  if (!fs.existsSync(PROJECTS_PATH)) {
+    return res.json([]);
+  }
+
+  const files = fs.readdirSync(PROJECTS_PATH).filter(f => f.endsWith('.json'));
+  const projects = files.map(f => {
+    try {
+      const project = JSON.parse(fs.readFileSync(path.join(PROJECTS_PATH, f), 'utf8'));
+      return {
+        project_id: project.project_id,
+        concept: project.concept,
+        duration: project.duration,
+        shot_count: project.shots?.length || 0
+      };
+    } catch (e) {
+      return null;
+    }
+  }).filter(Boolean);
+
+  res.json(projects);
+});
+
+// Get project by ID with resolved video paths
+app.get('/api/projects/:id', (req, res) => {
+  const projectPath = path.join(PROJECTS_PATH, `${req.params.id}.json`);
+
+  if (!fs.existsSync(projectPath)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+
+  const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
+  const jobs = loadJobs();
+
+  // Merge job results into shots
+  for (const shot of project.shots || []) {
+    if (shot.job_id) {
+      const job = jobs.find(j => j.id === shot.job_id);
+      if (job) {
+        shot.job_status = job.status;
+        if (job.status === 'complete' && job.result) {
+          shot.video_path = job.result.path;
+          shot.video_duration = job.result.duration;
+        } else if (job.status === 'error') {
+          shot.job_error = job.error;
+        }
+      }
+    }
+  }
+
+  // Add overall status
+  const allComplete = (project.shots || []).every(s => s.job_status === 'complete');
+  const anyError = (project.shots || []).some(s => s.job_status === 'error');
+  const anyProcessing = (project.shots || []).some(s => s.job_id && !s.job_status);
+  project.status = anyError ? 'error' : allComplete ? 'complete' : anyProcessing ? 'processing' : 'pending';
+
+  res.json(project);
+});
+
 // ============ ElevenLabs Proxy ============
 
 app.get('/api/elevenlabs/voices', async (req, res) => {
@@ -1687,6 +1747,11 @@ ${include_vo
 
     console.log('Generated project:', JSON.stringify(project, null, 2));
 
+    // Auto-save project to disk
+    const projectPath = path.join(PROJECTS_PATH, `${project.project_id}.json`);
+    fs.writeFileSync(projectPath, JSON.stringify(project, null, 2));
+    console.log(`Project saved: ${project.project_id}`);
+
     res.json(project);
   } catch (err) {
     console.error('Generate project error:', err);
@@ -1860,6 +1925,9 @@ Return a JSON array of description strings, one for each shot in order.`;
       // Start processing
       processVeoJob(job.id, job.input);
 
+      // Store job_id in shot for persistence
+      shot.job_id = job.id;
+
       jobs.push({
         shot_id: shot.shot_id,
         job_id: job.id,
@@ -1870,6 +1938,11 @@ Return a JSON array of description strings, one for each shot in order.`;
       // Small delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+
+    // Save updated project with job_ids
+    const projectPath = path.join(PROJECTS_PATH, `${projectData.project_id}.json`);
+    fs.writeFileSync(projectPath, JSON.stringify(projectData, null, 2));
+    console.log(`Project updated with job IDs: ${projectData.project_id}`);
 
     console.log(`Execute project complete: ${jobs.length} jobs created`);
 
@@ -2054,8 +2127,8 @@ Provide:
 // ============ Video Assembly ============
 
 app.post('/api/assemble', async (req, res) => {
-  const { shots, outputFilename, textOverlays = [], audioLayers = [], videoVolume = 1.0,
-          musicTrack, musicVolume = 0.3 } = req.body;
+  let { shots, outputFilename, textOverlays = [], audioLayers = [], videoVolume = 1.0,
+        musicTrack, musicVolume = 0.3, project_id, voice_id } = req.body;
 
   // shots should be array of: { videoPath, trimStart?, trimEnd?, energy? }
   // Energy-based transitions when energy values are provided:
@@ -2073,11 +2146,74 @@ app.post('/api/assemble', async (req, res) => {
   //   - startTime: seconds from start of assembled video
   // videoVolume (optional): 0.0-1.0, default 1.0 - controls video's native audio level
   // musicTrack/musicVolume (deprecated): backward compat, converted to audioLayer
-  
+  // project_id (optional): Load shots from saved project, auto-generates VO if voice_id also provided
+  // voice_id (optional): Used with project_id to auto-generate VO from project shot.vo fields
+
+  // If project_id provided, load project and build shots + VO layers
+  if (project_id && !shots) {
+    const projectPath = path.join(PROJECTS_PATH, `${project_id}.json`);
+    if (!fs.existsSync(projectPath)) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
+    const jobs = loadJobs();
+
+    // Build shots from project
+    let runningTime = 0;
+    shots = [];
+
+    for (const shot of project.shots || []) {
+      const job = shot.job_id ? jobs.find(j => j.id === shot.job_id) : null;
+      if (!job || job.status !== 'complete') {
+        return res.status(400).json({
+          error: `Shot ${shot.shot_id} not ready: ${job?.status || 'no job'}`
+        });
+      }
+
+      shots.push({
+        videoPath: job.result.path,
+        energy: shot.energy
+      });
+
+      // Auto-generate VO audioLayer if shot has vo.text and voice_id provided
+      if (shot.vo?.text && voice_id) {
+        const shotDuration = job.result.duration || shot.duration_target || 4;
+        let startTime = runningTime;
+
+        // Adjust based on vo.timing
+        if (shot.vo.timing === 'middle') {
+          startTime += shotDuration * 0.25;
+        } else if (shot.vo.timing === 'end') {
+          startTime += shotDuration * 0.5;
+        }
+
+        audioLayers.push({
+          type: 'vo',
+          text: shot.vo.text,
+          voice_id: voice_id,
+          volume: 1,
+          startTime: startTime
+        });
+      }
+
+      runningTime += job.result.duration || shot.duration_target || 4;
+    }
+
+    console.log(`Loaded project ${project_id}: ${shots.length} shots, ${audioLayers.length} audio layers`);
+  }
+
   if (!shots || shots.length === 0) {
     return res.status(400).json({ error: 'No shots provided' });
   }
-  
+
+  // Validate each shot has videoPath
+  for (let i = 0; i < shots.length; i++) {
+    if (!shots[i].videoPath) {
+      return res.status(400).json({ error: `Shot ${i} is missing required videoPath` });
+    }
+  }
+
   try {
     const outputDir = path.join(__dirname, 'data', 'exports');
     if (!fs.existsSync(outputDir)) {

@@ -53,6 +53,8 @@ Key API routes:
 - `/api/breakdown-shot` - Break a shot into takes with Veo prompts and transition strategies
 - `/api/generate-veo-prompt` - Generate Veo prompts from action descriptions with optional frame image analysis
 - `/api/jobs` - Job queue for background generation (POST to create, GET to list/fetch)
+- `/api/projects` - [WIP] List all saved projects
+- `/api/projects/:id` - [WIP] Get project with resolved video paths and job status
 
 **Job Queue:**
 Jobs are persisted to `jobs.json`. Supported types: `veo-generate`, `imagen-generate`. Veo jobs automatically poll for completion every 10 seconds and download/save videos locally when complete.
@@ -114,6 +116,71 @@ POST /api/assemble {
 - **textOverlays**: Burn text onto video (position: "top", "center", "bottom")
 - **audioLayers**: Mix audio tracks. Use `path` for existing files OR `text` + `voice_id` for inline TTS generation
 - **videoVolume**: Control video's native audio level (0=mute, 1=full)
+- **project_id** (WIP): Load shots from saved project instead of passing shots array
+- **voice_id** (WIP): When used with project_id, auto-generates VO from project's shot.vo fields
+
+---
+
+## [WIP] Project Persistence (NOT YET TESTED)
+
+> **Warning**: These endpoints were just implemented and have not been tested. This should be the next item addressed before using in production.
+
+The following features enable project state persistence across sessions:
+
+**Auto-save behavior:**
+- `/api/generate-project-from-structure` now auto-saves projects to `data/projects/`
+- `/api/execute-project` now stores `job_id` in each shot and saves the updated project
+
+**`GET /api/projects`** - List all saved projects:
+```json
+// Response
+[
+  { "project_id": "red_balloon_123", "concept": "...", "duration": 12, "shot_count": 3 }
+]
+```
+
+**`GET /api/projects/:id`** - Get project with resolved video paths:
+```json
+// Response
+{
+  "project_id": "red_balloon_123",
+  "concept": "a red balloon escaping into the sky",
+  "status": "complete",  // complete | processing | error | pending
+  "shots": [
+    {
+      "shot_id": "shot_1",
+      "description": "...",
+      "energy": 0.3,
+      "job_id": "job_xxx",
+      "job_status": "complete",
+      "video_path": "/video/veo_xxx.mp4",
+      "video_duration": 4
+    }
+  ]
+}
+```
+
+**`POST /api/assemble` with project_id:**
+```json
+{
+  "project_id": "red_balloon_123",
+  "voice_id": "abc123",           // optional - enables auto-VO from project shot.vo fields
+  "outputFilename": "final.mp4"
+}
+```
+- Loads shots from project, resolves video paths from completed jobs
+- If `voice_id` provided, auto-generates audioLayers from shots with `vo.text`
+- Can still pass explicit `audioLayers` to add music or additional VO
+
+**Simplified workflow:**
+```
+POST /api/generate-project-from-structure → project auto-saved
+POST /api/execute-project → jobs submitted, project updated with job_ids
+GET /api/projects/:id → poll until status="complete"
+POST /api/assemble { project_id, voice_id } → final video
+```
+
+---
 
 **Project Execution (`/api/execute-project`):**
 Generates Veo prompts for all shots and submits them to the job queue, returning immediately with job IDs.
