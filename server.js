@@ -1114,7 +1114,7 @@ async function analyzeImageWithGemini(imagePath, accessToken, projectId) {
     }],
     generationConfig: {
       temperature: 0.3,
-      maxOutputTokens: 256
+      maxOutputTokens: 1024  // Gemini 2.5 Flash uses thinking tokens that count against this limit
     }
   };
 
@@ -1136,7 +1136,12 @@ async function analyzeImageWithGemini(imagePath, accessToken, projectId) {
   }
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  console.log('Gemini image analysis response:', JSON.stringify(data, null, 2));
+
+  // Concatenate all text parts (Gemini may return multiple parts)
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const text = parts.map(p => p.text || '').join('');
+  return text;
 }
 
 app.post('/api/generate-veo-prompt', async (req, res) => {
