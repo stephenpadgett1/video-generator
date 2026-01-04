@@ -1084,6 +1084,174 @@ Break this shot into takes.`;
   }
 });
 
+// Helper to analyze an image with Gemini Flash
+async function analyzeImageWithGemini(imagePath, accessToken, projectId) {
+  const fullPath = path.isAbsolute(imagePath) ? imagePath : path.join(__dirname, imagePath);
+
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`Image not found: ${imagePath}`);
+  }
+
+  const imageBuffer = fs.readFileSync(fullPath);
+  const imageBase64 = imageBuffer.toString('base64');
+  const ext = path.extname(fullPath).toLowerCase();
+  const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+
+  const requestBody = {
+    contents: [{
+      role: 'user',
+      parts: [
+        {
+          inlineData: {
+            mimeType,
+            data: imageBase64
+          }
+        },
+        {
+          text: 'Describe this image briefly (2-3 sentences). Focus on: subjects, composition, lighting, colors, mood. Be factual and specific.'
+        }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 256
+    }
+  };
+
+  const response = await fetch(
+    `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify(requestBody)
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Gemini image analysis failed: ${error}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+app.post('/api/generate-veo-prompt', async (req, res) => {
+  const config = loadConfig();
+
+  if (!config.claudeKey) {
+    return res.status(400).json({ error: 'No Claude API key configured' });
+  }
+
+  const {
+    description,
+    durationSeconds,
+    aspectRatio,
+    style,
+    firstFrameDescription,
+    lastFrameDescription,
+    firstFrameImagePath,
+    lastFrameImagePath,
+    previousTakeDescription,
+    additionalContext
+  } = req.body;
+
+  if (!description) {
+    return res.status(400).json({ error: 'description is required' });
+  }
+
+  try {
+    let firstFrameAnalysis = null;
+    let lastFrameAnalysis = null;
+    let firstFrameDesc = firstFrameDescription;
+    let lastFrameDesc = lastFrameDescription;
+
+    // Analyze images with Gemini if paths provided but no descriptions
+    if (firstFrameImagePath && !firstFrameDescription) {
+      console.log('Analyzing first frame image:', firstFrameImagePath);
+      const { accessToken, projectId } = await getVeoAccessToken(config);
+      firstFrameAnalysis = await analyzeImageWithGemini(firstFrameImagePath, accessToken, projectId);
+      firstFrameDesc = firstFrameAnalysis;
+      console.log('First frame analysis:', firstFrameAnalysis);
+    }
+
+    if (lastFrameImagePath && !lastFrameDescription) {
+      console.log('Analyzing last frame image:', lastFrameImagePath);
+      const { accessToken, projectId } = await getVeoAccessToken(config);
+      lastFrameAnalysis = await analyzeImageWithGemini(lastFrameImagePath, accessToken, projectId);
+      lastFrameDesc = lastFrameAnalysis;
+      console.log('Last frame analysis:', lastFrameAnalysis);
+    }
+
+    // Build Claude prompt
+    const systemPrompt = `You are a cinematographer writing prompts for Veo, an AI video generator.
+
+Given the action description and optional frame context, write a detailed video generation prompt that:
+- Describes the motion/action clearly
+- Specifies camera movement and angle
+- Includes lighting and visual style
+- If a starting frame is described, ensure the video begins from that visual state
+- If an ending frame is described, guide the action toward that visual state
+- Maintains consistency with any previous take context
+
+Output only the prompt text, no JSON or explanation.`;
+
+    let userMessage = `ACTION: ${description}`;
+    if (durationSeconds) userMessage += `\nDURATION: ${durationSeconds} seconds`;
+    if (aspectRatio) userMessage += `\nASPECT RATIO: ${aspectRatio}`;
+    if (style) userMessage += `\nSTYLE: ${style}`;
+    if (firstFrameDesc) userMessage += `\nSTARTING FRAME: ${firstFrameDesc}`;
+    if (lastFrameDesc) userMessage += `\nENDING FRAME: ${lastFrameDesc}`;
+    if (previousTakeDescription) userMessage += `\nPREVIOUS TAKE: ${previousTakeDescription}`;
+    if (additionalContext) userMessage += `\nCONTEXT: ${additionalContext}`;
+    userMessage += '\n\nWrite a Veo prompt for this take.';
+
+    console.log('Generating Veo prompt with Claude...');
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': config.claudeKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Claude API error:', error);
+      return res.status(response.status).json({ error });
+    }
+
+    const data = await response.json();
+    const veoPrompt = data.content?.[0]?.text;
+
+    if (!veoPrompt) {
+      return res.status(500).json({ error: 'No response from Claude' });
+    }
+
+    console.log('Generated Veo prompt:', veoPrompt.substring(0, 100) + '...');
+
+    const result = { veoPrompt };
+    if (firstFrameAnalysis) result.firstFrameAnalysis = firstFrameAnalysis;
+    if (lastFrameAnalysis) result.lastFrameAnalysis = lastFrameAnalysis;
+
+    res.json(result);
+  } catch (err) {
+    console.error('Generate Veo prompt error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/generate-image', async (req, res) => {
   const config = loadConfig();
 
