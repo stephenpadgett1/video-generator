@@ -1684,7 +1684,10 @@ app.post('/api/assemble', async (req, res) => {
   const { shots, outputFilename } = req.body;
   
   // shots should be array of: { videoPath, voPath?, trimStart?, trimEnd?, energy? }
-  // If energy is provided and drops >= 0.4 between consecutive shots, 0.5s black is inserted
+  // Energy-based transitions when energy values are provided:
+  //   - Drop >= 0.4: insert 0.5s black before lower-energy shot
+  //   - Rise >= 0.4: hard cut with 0.1s trimmed from outgoing shot
+  //   - Change < 0.2: 0.25s crossfade dissolve
   
   if (!shots || shots.length === 0) {
     return res.status(400).json({ error: 'No shots provided' });
@@ -1711,22 +1714,61 @@ app.post('/api/assemble', async (req, res) => {
     const concatLines = [];
 
     // Helper to generate a black clip for energy drop transitions
-    const generateBlackClip = (outputPath, duration = 0.5) => {
-      const cmd = `ffmpeg -y -f lavfi -i color=c=black:s=1080x1920:r=30:d=${duration} -f lavfi -i anullsrc=r=44100:cl=stereo -t ${duration} -c:v libx264 -preset fast -crf 23 -c:a aac -pix_fmt yuv420p "${outputPath}"`;
+    const generateBlackClip = (clipPath, duration = 0.5) => {
+      const cmd = `ffmpeg -y -f lavfi -i color=c=black:s=1080x1920:r=30:d=${duration} -f lavfi -i anullsrc=r=44100:cl=stereo -t ${duration} -c:v libx264 -preset fast -crf 23 -c:a aac -pix_fmt yuv420p "${clipPath}"`;
       execSync(cmd, { stdio: 'pipe' });
     };
-    
+
+    // Helper to get video duration
+    const getClipDuration = (clipPath) => {
+      const result = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${clipPath}"`, { encoding: 'utf8' });
+      return parseFloat(result.trim());
+    };
+
+    // Helper to apply crossfade between two clips
+    const applyCrossfade = (clip1Path, clip2Path, outputClipPath, fadeDuration = 0.25) => {
+      const dur1 = getClipDuration(clip1Path);
+      const offset = Math.max(0, dur1 - fadeDuration);
+      const cmd = `ffmpeg -y -i "${clip1Path}" -i "${clip2Path}" -filter_complex "[0:v][1:v]xfade=transition=fade:duration=${fadeDuration}:offset=${offset}[v];[0:a][1:a]acrossfade=d=${fadeDuration}[a]" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 23 -c:a aac -pix_fmt yuv420p "${outputClipPath}"`;
+      execSync(cmd, { stdio: 'pipe' });
+    };
+
+    // Helper to trim end of a clip
+    const trimClipEnd = (inputPath, outputClipPath, trimAmount = 0.1) => {
+      const dur = getClipDuration(inputPath);
+      const newDur = Math.max(0.1, dur - trimAmount);
+      const cmd = `ffmpeg -y -i "${inputPath}" -t ${newDur} -c:v libx264 -preset fast -crf 23 -c:a aac -pix_fmt yuv420p "${outputClipPath}"`;
+      execSync(cmd, { stdio: 'pipe' });
+    };
+
+    // Determine transition type between shots
+    const getTransitionType = (prevEnergy, currEnergy) => {
+      if (typeof prevEnergy !== 'number' || typeof currEnergy !== 'number') {
+        return 'cut'; // No energy data, default cut
+      }
+      const change = currEnergy - prevEnergy;
+      if (change <= -0.4) {
+        return 'black'; // Energy drop >= 0.4
+      } else if (change >= 0.4) {
+        return 'hard_cut'; // Energy rise >= 0.4
+      } else if (Math.abs(change) < 0.2) {
+        return 'crossfade'; // Small change < 0.2
+      }
+      return 'cut'; // Default for changes between 0.2 and 0.4
+    };
+
     // Process each shot - normalize to same format and mix in VO if present
+    const normalizedPaths = [];
     for (let i = 0; i < shots.length; i++) {
       const shot = shots[i];
       const videoFullPath = path.join(__dirname, 'data', shot.videoPath.replace(/^\//, ''));
-      
+
       if (!fs.existsSync(videoFullPath)) {
         throw new Error(`Video not found: ${shot.videoPath}`);
       }
-      
+
       const normalizedPath = path.join(tempDir, `shot_${i}.mp4`);
-      
+
       // Check if we have a VO to mix in
       let hasVo = false;
       let voFullPath = '';
@@ -1737,14 +1779,14 @@ app.post('/api/assemble', async (req, res) => {
           console.log(`VO not found, skipping: ${shot.voPath}`);
         }
       }
-      
+
       let ffmpegCmd;
-      
+
       if (hasVo) {
         // Mix video with VO audio
         // Use the video's audio (if any) at lower volume and overlay VO
         ffmpegCmd = `ffmpeg -y -i "${videoFullPath}" -i "${voFullPath}"`;
-        
+
         // Add trim if specified
         if (shot.trimStart) {
           ffmpegCmd += ` -ss ${shot.trimStart}`;
@@ -1752,15 +1794,15 @@ app.post('/api/assemble', async (req, res) => {
         if (shot.trimEnd) {
           ffmpegCmd += ` -to ${shot.trimEnd}`;
         }
-        
+
         // Video filter: normalize to 1080x1920, 30fps
         ffmpegCmd += ` -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"`;
-        
+
         // Audio filter: mix original audio (reduced volume) with VO
         // [0:a] is video's audio, [1:a] is VO
         // Reduce video audio to 20%, keep VO at 100%
         ffmpegCmd += ` -filter_complex "[0:a]volume=0.2[a0];[1:a]volume=1.0[a1];[a0][a1]amix=inputs=2:duration=longest[aout]" -map 0:v -map "[aout]"`;
-        
+
         ffmpegCmd += ` -c:v libx264 -preset fast -crf 23`;
         ffmpegCmd += ` -c:a aac -ar 44100 -ac 2`;
         ffmpegCmd += ` -pix_fmt yuv420p`;
@@ -1769,41 +1811,73 @@ app.post('/api/assemble', async (req, res) => {
       } else {
         // No VO - just normalize the video
         ffmpegCmd = `ffmpeg -y -i "${videoFullPath}"`;
-        
+
         if (shot.trimStart) {
           ffmpegCmd += ` -ss ${shot.trimStart}`;
         }
         if (shot.trimEnd) {
           ffmpegCmd += ` -to ${shot.trimEnd}`;
         }
-        
+
         ffmpegCmd += ` -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"`;
         ffmpegCmd += ` -c:v libx264 -preset fast -crf 23`;
         ffmpegCmd += ` -c:a aac -ar 44100 -ac 2`;
         ffmpegCmd += ` -pix_fmt yuv420p`;
         ffmpegCmd += ` "${normalizedPath}"`;
       }
-      
+
       console.log(`Processing shot ${i}${hasVo ? ' (with VO)' : ''}:`, ffmpegCmd);
       execSync(ffmpegCmd, { stdio: 'pipe' });
-
-      // Check for energy drop from previous shot - insert black if >= 0.4 drop
-      if (i > 0 && typeof shot.energy === 'number' && typeof shots[i - 1].energy === 'number') {
-        const energyDrop = shots[i - 1].energy - shot.energy;
-        if (energyDrop >= 0.4) {
-          console.log(`Energy drop detected: ${shots[i - 1].energy} → ${shot.energy} (drop: ${energyDrop.toFixed(2)}). Inserting 0.5s black before shot ${i}.`);
-          const blackPath = path.join(tempDir, `black_before_${i}.mp4`);
-          generateBlackClip(blackPath);
-          concatLines.push(`file '${blackPath.replace(/\\/g, '/')}'`);
-        }
-      }
-
-      concatLines.push(`file '${normalizedPath.replace(/\\/g, '/')}'`);
+      normalizedPaths.push(normalizedPath);
     }
-    
+
+    // Build final sequence with transitions
+    let currentClipPath = normalizedPaths[0];
+    const finalClips = [];
+
+    for (let i = 1; i < shots.length; i++) {
+      const prevEnergy = shots[i - 1].energy;
+      const currEnergy = shots[i].energy;
+      const transition = getTransitionType(prevEnergy, currEnergy);
+      const nextClipPath = normalizedPaths[i];
+
+      console.log(`Transition ${i - 1} → ${i}: ${transition} (energy: ${prevEnergy ?? 'none'} → ${currEnergy ?? 'none'})`);
+
+      if (transition === 'black') {
+        // Add current clip, then black, then continue with next
+        finalClips.push(currentClipPath);
+        const blackPath = path.join(tempDir, `black_before_${i}.mp4`);
+        generateBlackClip(blackPath);
+        finalClips.push(blackPath);
+        currentClipPath = nextClipPath;
+      } else if (transition === 'hard_cut') {
+        // Trim 0.1s from end of current clip
+        const trimmedPath = path.join(tempDir, `trimmed_${i - 1}.mp4`);
+        trimClipEnd(currentClipPath, trimmedPath, 0.1);
+        finalClips.push(trimmedPath);
+        currentClipPath = nextClipPath;
+      } else if (transition === 'crossfade') {
+        // Crossfade current with next, result becomes new current
+        const crossfadePath = path.join(tempDir, `crossfade_${i - 1}_${i}.mp4`);
+        applyCrossfade(currentClipPath, nextClipPath, crossfadePath, 0.25);
+        currentClipPath = crossfadePath;
+      } else {
+        // Default cut - just add current clip
+        finalClips.push(currentClipPath);
+        currentClipPath = nextClipPath;
+      }
+    }
+    // Don't forget the last clip
+    finalClips.push(currentClipPath);
+
+    // Build concat list
+    for (const clipPath of finalClips) {
+      concatLines.push(`file '${clipPath.replace(/\\/g, '/')}'`);
+    }
+
     // Write concat file
     fs.writeFileSync(concatFilePath, concatLines.join('\n'));
-    
+
     // Concatenate all clips
     const concatCmd = `ffmpeg -y -f concat -safe 0 -i "${concatFilePath}" -c copy "${outputPath}"`;
     console.log('Concatenating:', concatCmd);
