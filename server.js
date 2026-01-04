@@ -228,10 +228,14 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
     return res.status(400).json({ error: 'No API key configured' });
   }
 
-  const { voiceId, text, voiceSettings } = req.body;
+  const { voice_id, text, model_id = 'eleven_turbo_v2_5', filename: customFilename } = req.body;
+
+  if (!voice_id || !text) {
+    return res.status(400).json({ error: 'voice_id and text are required' });
+  }
 
   try {
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
       method: 'POST',
       headers: {
         'xi-api-key': config.elevenLabsKey,
@@ -239,8 +243,8 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
       },
       body: JSON.stringify({
         text,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: voiceSettings || {
+        model_id,
+        voice_settings: {
           stability: 0.5,
           similarity_boost: 0.75
         }
@@ -253,21 +257,25 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
     }
 
     const audioBuffer = await response.arrayBuffer();
-    
-    // Save to temp file and return path
-    const filename = `vo_${Date.now()}.mp3`;
-    const filepath = path.join(__dirname, 'data', 'audio', filename);
-    
-    if (!fs.existsSync(path.join(__dirname, 'data', 'audio'))) {
-      fs.mkdirSync(path.join(__dirname, 'data', 'audio'));
+
+    // Ensure tts directory exists
+    const audioDir = path.join(__dirname, 'data', 'audio', 'tts');
+    if (!fs.existsSync(audioDir)) {
+      fs.mkdirSync(audioDir, { recursive: true });
     }
-    
+
+    // Save audio file (ensure .mp3 extension)
+    let filename = customFilename || `tts_${Date.now()}.mp3`;
+    if (customFilename && !customFilename.endsWith('.mp3')) {
+      filename = `${customFilename}.mp3`;
+    }
+    const filepath = path.join(audioDir, filename);
     fs.writeFileSync(filepath, Buffer.from(audioBuffer));
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       filename,
-      path: `/audio/${filename}`
+      path: `/audio/tts/${filename}`
     });
   } catch (err) {
     console.error('ElevenLabs TTS error:', err);
@@ -2056,9 +2064,11 @@ app.post('/api/assemble', async (req, res) => {
   //   - Change < 0.2: 0.25s crossfade dissolve
   // textOverlays (optional): array of { text, startTime, duration, position? }
   //   - position: "top", "center", or "bottom" (default "bottom")
-  // audioLayers (optional): array of { type, path, volume, startTime }
+  // audioLayers (optional): array of { type, path?, text?, voice_id?, model_id?, volume, startTime }
   //   - type: "music", "vo", "sfx", "ambient" (label only, all mixed same way)
-  //   - path: path to audio file
+  //   - path: path to existing audio file
+  //   - OR text + voice_id: generate VO on the fly (voice_id required with text)
+  //   - model_id: optional TTS model (default: eleven_turbo_v2_5)
   //   - volume: 0.0-1.0
   //   - startTime: seconds from start of assembled video
   // videoVolume (optional): 0.0-1.0, default 1.0 - controls video's native audio level
@@ -2089,6 +2099,58 @@ app.post('/api/assemble', async (req, res) => {
     if (musicTrack && audioLayers.length === 0) {
       console.log('Converting legacy musicTrack to audioLayer');
       allAudioLayers.push({ type: 'music', path: musicTrack, volume: musicVolume, startTime: 0 });
+    }
+
+    // Process audio layers - generate TTS for any with text instead of path
+    const processedAudioLayers = [];
+    for (let i = 0; i < allAudioLayers.length; i++) {
+      const layer = allAudioLayers[i];
+
+      if (layer.text && !layer.path) {
+        // Generate VO from text
+        if (!layer.voice_id) {
+          throw new Error(`audioLayer ${i}: voice_id required when using text`);
+        }
+
+        const config = loadConfig();
+        if (!config.elevenLabsKey) {
+          throw new Error('No ElevenLabs API key configured for TTS generation');
+        }
+
+        console.log(`Generating TTS for audioLayer ${i}: "${layer.text.substring(0, 50)}..."`);
+
+        const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${layer.voice_id}`, {
+          method: 'POST',
+          headers: {
+            'xi-api-key': config.elevenLabsKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: layer.text,
+            model_id: layer.model_id || 'eleven_turbo_v2_5',
+            voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+          })
+        });
+
+        if (!ttsResponse.ok) {
+          const error = await ttsResponse.text();
+          throw new Error(`TTS generation failed for audioLayer ${i}: ${error}`);
+        }
+
+        const audioBuffer = await ttsResponse.arrayBuffer();
+
+        // Save to temp directory for this assembly
+        const ttsFilename = `tts_layer_${i}_${Date.now()}.mp3`;
+        const ttsPath = path.join(tempDir, ttsFilename);
+        fs.writeFileSync(ttsPath, Buffer.from(audioBuffer));
+
+        processedAudioLayers.push({
+          ...layer,
+          path: ttsPath  // Use absolute path since it's in tempDir
+        });
+      } else {
+        processedAudioLayers.push(layer);
+      }
     }
 
     // Create concat file for ffmpeg
@@ -2221,7 +2283,7 @@ app.post('/api/assemble', async (req, res) => {
 
     // Determine post-processing steps needed
     const hasOverlays = textOverlays && textOverlays.length > 0;
-    const hasAudioLayers = allAudioLayers.length > 0;
+    const hasAudioLayers = processedAudioLayers.length > 0;
     const hasVolumeAdjust = videoVolume !== 1.0;
     const needsPostProcessing = hasOverlays || hasAudioLayers || hasVolumeAdjust;
 
@@ -2274,8 +2336,11 @@ app.post('/api/assemble', async (req, res) => {
 
       // Validate and collect audio layer paths
       const validLayers = [];
-      for (const layer of allAudioLayers) {
-        const layerPath = path.join(__dirname, 'data', layer.path.replace(/^\//, ''));
+      for (const layer of processedAudioLayers) {
+        // Handle both absolute paths (generated TTS) and relative paths (existing files)
+        const layerPath = path.isAbsolute(layer.path)
+          ? layer.path
+          : path.join(__dirname, 'data', layer.path.replace(/^\//, ''));
         if (fs.existsSync(layerPath)) {
           validLayers.push({ ...layer, fullPath: layerPath });
         } else {
