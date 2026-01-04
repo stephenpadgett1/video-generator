@@ -1683,7 +1683,8 @@ Provide:
 app.post('/api/assemble', async (req, res) => {
   const { shots, outputFilename } = req.body;
   
-  // shots should be array of: { videoPath, voPath?, trimStart?, trimEnd? }
+  // shots should be array of: { videoPath, voPath?, trimStart?, trimEnd?, energy? }
+  // If energy is provided and drops >= 0.4 between consecutive shots, 0.5s black is inserted
   
   if (!shots || shots.length === 0) {
     return res.status(400).json({ error: 'No shots provided' });
@@ -1708,6 +1709,12 @@ app.post('/api/assemble', async (req, res) => {
     // Create concat file for ffmpeg
     const concatFilePath = path.join(tempDir, 'concat.txt');
     const concatLines = [];
+
+    // Helper to generate a black clip for energy drop transitions
+    const generateBlackClip = (outputPath, duration = 0.5) => {
+      const cmd = `ffmpeg -y -f lavfi -i color=c=black:s=1080x1920:r=30:d=${duration} -f lavfi -i anullsrc=r=44100:cl=stereo -t ${duration} -c:v libx264 -preset fast -crf 23 -c:a aac -pix_fmt yuv420p "${outputPath}"`;
+      execSync(cmd, { stdio: 'pipe' });
+    };
     
     // Process each shot - normalize to same format and mix in VO if present
     for (let i = 0; i < shots.length; i++) {
@@ -1779,7 +1786,18 @@ app.post('/api/assemble', async (req, res) => {
       
       console.log(`Processing shot ${i}${hasVo ? ' (with VO)' : ''}:`, ffmpegCmd);
       execSync(ffmpegCmd, { stdio: 'pipe' });
-      
+
+      // Check for energy drop from previous shot - insert black if >= 0.4 drop
+      if (i > 0 && typeof shot.energy === 'number' && typeof shots[i - 1].energy === 'number') {
+        const energyDrop = shots[i - 1].energy - shot.energy;
+        if (energyDrop >= 0.4) {
+          console.log(`Energy drop detected: ${shots[i - 1].energy} → ${shot.energy} (drop: ${energyDrop.toFixed(2)}). Inserting 0.5s black before shot ${i}.`);
+          const blackPath = path.join(tempDir, `black_before_${i}.mp4`);
+          generateBlackClip(blackPath);
+          concatLines.push(`file '${blackPath.replace(/\\/g, '/')}'`);
+        }
+      }
+
       concatLines.push(`file '${normalizedPath.replace(/\\/g, '/')}'`);
     }
     
