@@ -38,12 +38,14 @@ Key API routes:
 - `/api/config` - Load/save API keys (stored in `data/config.json`)
 - `/api/project` - Project CRUD (stored in `data/projects/`)
 - `/api/claude` - Proxy to Anthropic API
-- `/api/elevenlabs/*` - TTS proxy (voices list, generation)
+- `/api/elevenlabs/voices` - List voices (default 5, use `?count=N` for more)
+- `/api/elevenlabs/voices/cached` - Cached voice list with auto-refresh (7 days), `?refresh=true` to force
+- `/api/elevenlabs/tts` - Generate speech audio from text
 - `/api/veo/*` - Vertex AI video generation proxy (Veo 3.1)
 - `/api/gemini/analyze-video` - Video analysis via Gemini 2.5 Flash
-- `/api/assemble` - ffmpeg-based video assembly with VO mixing, transitions, overlays, and music
+- `/api/assemble` - ffmpeg-based video assembly with VO mixing, transitions, overlays, and inline TTS
 - `/api/generate-structure` - Generate shot structure from concept using Claude
-- `/api/generate-project-from-structure` - Generate full project with shot descriptions from concept
+- `/api/generate-project-from-structure` - Generate full project with shot descriptions and optional VO text
 - `/api/execute-project` - Execute a project: generates Veo prompts and submits jobs for all shots
 - `/api/extract-frame` - Frame extraction for reference shots (supports `saveToDisk` option to save to `generated-images/`)
 - `/api/generate-image` - Generate images via Vertex AI Imagen 3 (saves to `generated-images/`)
@@ -63,18 +65,45 @@ Completed veo-generate jobs have result: { operationName, filename, path, durati
 Completed imagen-generate jobs have result: { imagePath, imageUrl }
 ```
 
+**ElevenLabs TTS (`/api/elevenlabs/tts`):**
+```json
+POST /api/elevenlabs/tts {
+  "voice_id": "abc123",                    // required
+  "text": "Hello world",                   // required
+  "model_id": "eleven_turbo_v2_5",         // optional, default shown
+  "filename": "intro_vo"                   // optional, auto-generated if omitted (.mp3 added)
+}
+// Response: { "success": true, "filename": "intro_vo.mp3", "path": "/audio/tts/intro_vo.mp3" }
+```
+
+**Project Generation (`/api/generate-project-from-structure`):**
+```json
+POST /api/generate-project-from-structure {
+  "concept": "a single drop of ink falling into water",  // required
+  "duration": 12,                                         // required (seconds)
+  "arc": "tension-release",                               // optional (linear-build|tension-release|wave|flat-punctuate|bookend)
+  "style": "cinematic, moody lighting",                   // optional
+  "include_vo": true                                      // optional - generates VO text + timing for select shots
+}
+// Response includes shots with: shot_id, role, energy, duration_target, position, description
+// When include_vo: true, shots also have: vo: { text, timing } or vo: null
+```
+
 **Video Assembly (`/api/assemble`):**
 ```json
 POST /api/assemble {
   "shots": [
-    { "videoPath": "/video/clip.mp4", "voPath?": "/audio/vo.mp3", "trimStart?": 0, "trimEnd?": 5, "energy?": 0.5 }
+    { "videoPath": "/video/clip.mp4", "trimStart?": 0, "trimEnd?": 5, "energy?": 0.5 }
   ],
   "outputFilename?": "output.mp4",
   "textOverlays?": [
     { "text": "ESTABLISH", "startTime": 0, "duration": 2, "position": "bottom" }
   ],
-  "musicTrack?": "/audio/background.mp3",
-  "musicVolume?": 0.3,
+  "audioLayers?": [
+    { "type": "vo", "path": "/audio/tts/existing.mp3", "volume": 1, "startTime": 0 },
+    { "type": "vo", "text": "Generate this on the fly", "voice_id": "abc123", "volume": 1, "startTime": 3 },
+    { "type": "music", "path": "/audio/bg.mp3", "volume": 0.3, "startTime": 0 }
+  ],
   "videoVolume?": 1.0
 }
 ```
@@ -83,7 +112,7 @@ POST /api/assemble {
   - Rise ≥ 0.4: hard cut with 0.1s trimmed from outgoing
   - Change < 0.2: 0.25s crossfade dissolve
 - **textOverlays**: Burn text onto video (position: "top", "center", "bottom")
-- **musicTrack/musicVolume**: Mix background music under video (fades out in last 1s)
+- **audioLayers**: Mix audio tracks. Use `path` for existing files OR `text` + `voice_id` for inline TTS generation
 - **videoVolume**: Control video's native audio level (0=mute, 1=full)
 
 **Project Execution (`/api/execute-project`):**
@@ -194,3 +223,60 @@ Clip manifests (used by MCP server and realtime-narrative) follow this structure
   }
 }
 ```
+
+## Video Generation Workflow (for LLMs)
+
+Complete end-to-end video generation follows these steps:
+
+### Step 1: Generate Project Structure
+```
+POST /api/generate-project-from-structure
+{ "concept": "...", "duration": 12, "arc": "tension-release", "style": "...", "include_vo": true }
+```
+Returns project with shots array. Each shot has: `shot_id`, `role`, `energy`, `duration_target`, `description`, and optionally `vo: { text, timing }`.
+
+### Step 2: Execute Project (Generate Videos)
+```
+POST /api/execute-project
+{ "project": <project from step 1>, "style": "...", "aspectRatio": "9:16" }
+```
+Returns `jobs` array with `job_id` for each shot. Videos generate in background.
+
+### Step 3: Poll for Job Completion
+```
+GET /api/jobs/:job_id
+```
+Poll until all jobs have `status: "complete"`. Completed jobs have `result.path` (e.g., `/video/veo_xxx.mp4`).
+
+### Step 4: Get Voice ID (if using VO)
+```
+GET /api/elevenlabs/voices/cached
+```
+Returns `{ voices: [{ voice_id, name, ... }] }`. Pick a voice_id for TTS.
+
+### Step 5: Assemble Final Video
+```
+POST /api/assemble
+{
+  "shots": [
+    { "videoPath": "/video/veo_xxx.mp4", "energy": 0.3 },
+    { "videoPath": "/video/veo_yyy.mp4", "energy": 0.8 }
+  ],
+  "audioLayers": [
+    { "type": "vo", "text": "VO text from project", "voice_id": "xxx", "volume": 1, "startTime": 0 }
+  ],
+  "outputFilename": "final_video.mp4"
+}
+```
+Returns `{ path: "/exports/final_video.mp4" }`.
+
+### Shortcut: Minimal 2-Step Flow
+For quick generation without manual job polling:
+1. `POST /api/execute-project { "concept": "...", "duration": 12, "style": "..." }` - generates project + submits jobs
+2. Poll jobs, then `POST /api/assemble` with completed video paths
+
+### Tips
+- Use `energy` values from project shots in assembly for automatic transitions
+- `include_vo: true` generates sparse, selective VO - not every shot gets narration
+- audioLayers with `text` + `voice_id` generate TTS inline during assembly (no separate TTS call needed)
+- Check `/api/jobs` (GET) to see all recent jobs and their statuses
