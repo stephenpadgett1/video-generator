@@ -68,6 +68,21 @@ Or custom:
 - `music_video` - Dynamic camera, saturated colors, fragmented time flow
 - `noir` - Character POV, monochrome palette, noir lighting, elliptical time
 
+## Mood-Aware Audio
+
+Voice modulation and music profiles computed from shot mood/tension/energy:
+
+```javascript
+// In assembly audioLayers or direct TTS calls:
+{ "type": "vo", "text": "...", "voice_id": "...", "mood": "ominous", "tension": 0.7, "energy": 0.3 }
+```
+
+**Voice settings** (ElevenLabs): stability, similarity_boost derived from mood; speed_factor (0.5-2.0) via ffmpeg atempo post-processing.
+
+**Music profiles**: tempo, key, texture, instruments, search tags - computed but not yet connected to music selection/generation.
+
+See `audio-rules.js` for full mappings.
+
 ## Transitions (Assembly)
 
 Tension-aware (priority):
