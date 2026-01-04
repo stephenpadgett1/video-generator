@@ -337,10 +337,67 @@ async function pollVeoJob(jobId, operationName) {
           updateJob(jobId, { status: 'error', error: data.error.message });
         } else {
           const videoUri = data.response?.videos?.[0]?.uri;
-          updateJob(jobId, {
-            status: 'complete',
-            result: { operationName, videoUri, response: data.response }
-          });
+
+          if (videoUri) {
+            // Download and save the video file locally
+            try {
+              let downloadUrl = videoUri;
+              if (videoUri.startsWith('gs://')) {
+                const gcsPath = videoUri.replace('gs://', '');
+                downloadUrl = `https://storage.googleapis.com/${gcsPath}`;
+              }
+
+              console.log(`Veo job ${jobId} downloading video from:`, downloadUrl);
+
+              const videoResponse = await fetch(downloadUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+
+              if (!videoResponse.ok) {
+                const error = await videoResponse.text();
+                console.error(`Veo job ${jobId} download failed:`, error);
+                updateJob(jobId, { status: 'error', error: `Download failed: ${error}` });
+                return;
+              }
+
+              const videoBuffer = await videoResponse.arrayBuffer();
+
+              // Save to video directory
+              const videoDir = path.join(__dirname, 'data', 'video');
+              if (!fs.existsSync(videoDir)) {
+                fs.mkdirSync(videoDir, { recursive: true });
+              }
+
+              const filename = `veo_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.mp4`;
+              const filepath = path.join(videoDir, filename);
+              fs.writeFileSync(filepath, Buffer.from(videoBuffer));
+
+              // Get duration using ffprobe
+              const duration = getVideoDuration(filepath);
+
+              console.log(`Veo job ${jobId} saved video:`, filepath, 'Duration:', duration);
+
+              updateJob(jobId, {
+                status: 'complete',
+                result: {
+                  operationName,
+                  videoUri,
+                  filename,
+                  path: `/video/${filename}`,
+                  duration,
+                  response: data.response
+                }
+              });
+            } catch (downloadErr) {
+              console.error(`Veo job ${jobId} download error:`, downloadErr);
+              updateJob(jobId, { status: 'error', error: `Download error: ${downloadErr.message}` });
+            }
+          } else {
+            updateJob(jobId, {
+              status: 'error',
+              error: 'No video URI in response'
+            });
+          }
         }
       } else {
         setTimeout(poll, POLL_INTERVAL);
