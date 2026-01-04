@@ -42,18 +42,22 @@ Key API routes:
 - `/api/veo/*` - Vertex AI video generation proxy (Veo 3.1)
 - `/api/gemini/analyze-video` - Video analysis via Gemini 2.5 Flash
 - `/api/assemble` - ffmpeg-based video assembly with VO mixing
-- `/api/extract-frame` - Frame extraction for reference shots
+- `/api/extract-frame` - Frame extraction for reference shots (supports `saveToDisk` option to save to `generated-images/`)
 - `/api/generate-image` - Generate images via Vertex AI Imagen 3 (saves to `generated-images/`)
 - `/api/generate-frame-prompts` - Generate first/last frame image prompts from a Veo prompt
 - `/api/breakdown-shot` - Break a shot into takes with Veo prompts and transition strategies
+- `/api/generate-veo-prompt` - Generate Veo prompts from action descriptions with optional frame image analysis
 - `/api/jobs` - Job queue for background generation (POST to create, GET to list/fetch)
 
 **Job Queue:**
-Jobs are persisted to `jobs.json`. Supported types: `veo-generate`, `imagen-generate`. Veo jobs automatically poll for completion every 10 seconds.
+Jobs are persisted to `jobs.json`. Supported types: `veo-generate`, `imagen-generate`. Veo jobs automatically poll for completion every 10 seconds and download/save videos locally when complete.
 ```
 POST /api/jobs { type: "veo-generate", input: { prompt, aspectRatio?, durationSeconds?, referenceImagePath?, lastFramePath? } }
 GET /api/jobs/:id → { id, type, status, input, result, error, createdAt, updatedAt }
 GET /api/jobs → array of recent jobs
+
+Completed veo-generate jobs have result: { operationName, filename, path, duration }
+Completed imagen-generate jobs have result: { imagePath, imageUrl }
 ```
 
 Generated assets go to `data/` subdirectories: `audio/`, `video/`, `exports/`, `frames/`. Generated images go to `generated-images/`.
