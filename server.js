@@ -1900,6 +1900,16 @@ Return a JSON array of description strings, one for each shot in order.`;
       return res.status(400).json({ error: 'Project must have at least one shot' });
     }
 
+    // Build character lookup map for locked characters
+    const characterMap = {};
+    if (projectData.characters && Array.isArray(projectData.characters)) {
+      for (const char of projectData.characters) {
+        characterMap[char.id] = char;
+      }
+      console.log('Character map built:', Object.keys(characterMap), 'Characters with base_image_path:',
+        projectData.characters.filter(c => c.base_image_path).map(c => c.id));
+    }
+
     // For each shot, generate Veo prompt and submit job
     const jobs = [];
     const projectStyle = projectData.style || style;
@@ -1912,27 +1922,61 @@ Return a JSON array of description strings, one for each shot in order.`;
 
       console.log(`Processing shot ${shot.shot_id}...`);
 
+      // Build character context for this shot
+      let characterContext = null;
+      let referenceImagePath = null;
+
+      if (shot.characters && Array.isArray(shot.characters) && shot.characters.length > 0) {
+        const lockedDescriptions = [];
+        for (const charId of shot.characters) {
+          const char = characterMap[charId];
+          if (char) {
+            if (char.locked_description) {
+              lockedDescriptions.push(`${charId}: ${char.locked_description}`);
+            }
+            // Use first available reference image
+            if (!referenceImagePath && char.base_image_path) {
+              referenceImagePath = char.base_image_path;
+            }
+          }
+        }
+        if (lockedDescriptions.length > 0) {
+          characterContext = `CHARACTER APPEARANCE (must match exactly): ${lockedDescriptions.join('; ')}`;
+        }
+      }
+
       // Generate Veo prompt from description
       const veoPrompt = await generateVeoPromptInternal(
         shot.description,
         shot.duration_target,
         projectStyle,
         config.claudeKey,
-        { aspectRatio }
+        {
+          aspectRatio,
+          additionalContext: characterContext
+        }
       );
 
       console.log(`Generated Veo prompt for ${shot.shot_id}:`, veoPrompt.substring(0, 80) + '...');
 
       // Create job for this shot
+      const jobInput = {
+        prompt: veoPrompt,
+        aspectRatio,
+        durationSeconds: shot.duration_target
+      };
+
+      // Add reference image if character has one
+      if (referenceImagePath) {
+        jobInput.referenceImagePath = referenceImagePath;
+        console.log(`Using reference image for ${shot.shot_id}: ${referenceImagePath}`);
+      }
+
       const job = {
         id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
         type: 'veo-generate',
         status: 'pending',
-        input: {
-          prompt: veoPrompt,
-          aspectRatio,
-          durationSeconds: shot.duration_target
-        },
+        input: jobInput,
         result: null,
         error: null,
         createdAt: new Date().toISOString(),
@@ -2110,7 +2154,7 @@ app.post('/api/lock-character', async (req, res) => {
     fs.writeFileSync(filepath, Buffer.from(base64Image, 'base64'));
     console.log('Saved character base image to:', filepath);
 
-    // Step 3: Analyze with Gemini Flash to extract immutable visual features
+    // Step 3: Analyze with Gemini Pro to extract immutable visual features
     const geminiRequestBody = {
       contents: [{
         role: 'user',
@@ -2134,12 +2178,12 @@ Output format: A single sentence, 15-25 words max. Example: "East Asian woman, l
       }],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 100
+        maxOutputTokens: 1024
       }
     };
 
     const geminiResponse = await fetch(
-      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent`,
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent`,
       {
         method: 'POST',
         headers: {
@@ -2166,6 +2210,70 @@ Output format: A single sentence, 15-25 words max. Example: "East Asian woman, l
 
     if (!lockedDescription) {
       throw new Error('Failed to extract character description from Gemini');
+    }
+
+    // Validate description has enough detail (at least 8 words)
+    const wordCount = lockedDescription.split(/\s+/).length;
+    if (wordCount < 8) {
+      console.log(`Locked description too short (${wordCount} words), retrying with explicit prompt...`);
+
+      const retryRequestBody = {
+        contents: [{
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: 'image/png',
+                data: base64Image
+              }
+            },
+            {
+              text: `Describe this person's physical appearance in exactly one sentence with 15-25 words.
+
+You MUST include ALL of these details:
+1. Ethnicity/skin tone
+2. Approximate age (e.g., "early 30s", "mid 40s")
+3. Gender presentation
+4. Hair color and style
+5. Body build (slim, athletic, stocky, etc.)
+
+Do NOT mention clothing, pose, background, or expression.
+
+Example format: "Caucasian man, mid-30s, short brown hair with slight wave, athletic build, square jaw, light stubble."`
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1024
+        }
+      };
+
+      const retryResponse = await fetch(
+        `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify(retryRequestBody)
+        }
+      );
+
+      if (retryResponse.ok) {
+        const retryData = await retryResponse.json();
+        if (retryData.candidates?.[0]?.content?.parts) {
+          const retryDescription = retryData.candidates[0].content.parts
+            .map(p => p.text || '')
+            .join('')
+            .trim();
+          if (retryDescription && retryDescription.split(/\s+/).length >= 8) {
+            lockedDescription = retryDescription;
+            console.log('Retry successful, got longer description');
+          }
+        }
+      }
     }
 
     console.log('Locked character description:', lockedDescription);

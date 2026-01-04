@@ -115,3 +115,11 @@ audioLayers support `path` for existing files OR `text` + `voice_id` for inline 
 - Generated images: `generated-images/`
 - Exports: `data/exports/`
 - Projects: `data/projects/`
+
+## Testing Workflow
+
+When outputting videos during test sessions, use text annotations to notate anything to pay attention to or verify at specific timestamps. Annotations should be context-dependent based on what is being tested (e.g., transition timing, visual consistency, energy arc, character appearance).
+
+## Development Notes
+
+- **Model selection**: Don't waste time trying to optimize prompts for smaller/cheaper models. If a model isn't producing good results, upgrade to a more capable model immediately.
