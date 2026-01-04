@@ -1257,6 +1257,133 @@ Output only the prompt text, no JSON or explanation.`;
   }
 });
 
+// Arc type definitions for structure generation
+const ARC_TYPES = {
+  'linear-build': 'Steady increase in energy from start to finish',
+  'tension-release': 'Build tension to a peak, then release',
+  'wave': 'Oscillating energy with peaks and valleys',
+  'flat-punctuate': 'Consistent baseline energy with sudden spikes',
+  'bookend': 'Strong open and close with lower middle'
+};
+
+app.post('/api/generate-structure', async (req, res) => {
+  const config = loadConfig();
+
+  if (!config.claudeKey) {
+    return res.status(400).json({ error: 'No Claude API key configured' });
+  }
+
+  const { concept, duration, arc = 'tension-release' } = req.body;
+
+  if (!concept) {
+    return res.status(400).json({ error: 'concept is required' });
+  }
+
+  if (!duration || typeof duration !== 'number' || duration <= 0) {
+    return res.status(400).json({ error: 'duration is required and must be a positive number' });
+  }
+
+  if (!ARC_TYPES[arc]) {
+    return res.status(400).json({
+      error: `Invalid arc type. Must be one of: ${Object.keys(ARC_TYPES).join(', ')}`
+    });
+  }
+
+  const arcDescription = ARC_TYPES[arc];
+
+  try {
+    const systemPrompt = `You are a shot structure architect for short-form video. Your job is to divide a video concept into shots with appropriate roles and energy levels.
+
+## Role Vocabulary
+- establish: Set the scene, introduce the subject
+- emphasize: Highlight or intensify important elements
+- transition: Bridge between ideas or moments
+- punctuate: Create impact, a dramatic beat
+- reveal: Unveil something new
+- resolve: Conclude, bring closure
+
+## Energy Scale (0-1)
+- 0.0-0.2: Very calm, still, quiet
+- 0.2-0.4: Low energy, subtle movement
+- 0.4-0.6: Moderate energy, active but controlled
+- 0.6-0.8: High energy, dynamic
+- 0.8-1.0: Peak intensity, maximum impact
+
+## Arc Types
+- linear-build: Start low, steadily increase energy to finish high
+- tension-release: Build energy to a peak around 2/3 through, then drop for resolution
+- wave: Oscillate between high and low energy, creating rhythm
+- flat-punctuate: Maintain steady baseline with occasional sharp spikes
+- bookend: Start and end strong, with lower energy in the middle
+
+## Output Format
+Return a JSON object with:
+- concept: the original concept
+- duration: total duration in seconds
+- arc: the arc type used
+- arc_description: human-readable arc description
+- shots: array of shot objects, each with:
+  - shot_id: "shot_1", "shot_2", etc.
+  - role: one of the role vocabulary terms
+  - energy: 0-1 value matching the arc shape
+  - duration_target: seconds for this shot (all shots should sum to total duration)
+  - position: normalized position in the piece (0.0 = start, 1.0 = end)
+
+Aim for 3-6 shots depending on duration. Shorter pieces (under 15s) should have fewer shots.
+Match the energy curve to the specified arc type.
+Assign roles that make narrative sense for the concept.
+
+Return ONLY valid JSON, no explanation.`;
+
+    const userMessage = `CONCEPT: ${concept}
+DURATION: ${duration} seconds
+ARC: ${arc} (${arcDescription})
+
+Generate a shot structure for this piece.`;
+
+    console.log('Generating structure with Claude...');
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': config.claudeKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Claude API error:', error);
+      return res.status(response.status).json({ error });
+    }
+
+    const data = await response.json();
+    const content = data.content?.[0]?.text;
+
+    if (!content) {
+      return res.status(500).json({ error: 'No response from Claude' });
+    }
+
+    // Parse JSON response (handle potential markdown wrapping)
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const structure = JSON.parse(cleaned);
+
+    console.log('Generated structure:', JSON.stringify(structure, null, 2));
+
+    res.json(structure);
+  } catch (err) {
+    console.error('Generate structure error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/generate-image', async (req, res) => {
   const config = loadConfig();
 
