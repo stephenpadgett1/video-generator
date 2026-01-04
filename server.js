@@ -1299,8 +1299,21 @@ async function generateVeoPromptInternal(description, durationSeconds, style, cl
     lastFrameDescription,
     previousTakeDescription,
     additionalContext,
-    mood
+    mood,
+    productionRules
   } = options;
+
+  // Build production constraint prefix if rules are specified
+  let productionConstraintGuidance = '';
+  if (productionRules) {
+    const constraintText = buildProductionConstraintText(productionRules);
+    if (constraintText) {
+      productionConstraintGuidance = `
+PRODUCTION CONSTRAINTS (MUST RESPECT):
+${constraintText}
+These constraints are LOCKED and must be reflected in EVERY shot.`;
+    }
+  }
 
   // Build mood guidance if mood is specified
   let moodGuidance = '';
@@ -1327,7 +1340,7 @@ If a CHARACTER description is provided in CONTEXT, you MUST:
 2. Include ALL details verbatim: physical features, specific clothing colors/items, expression
 3. Do NOT paraphrase or omit any character details - copy them exactly
 4. Example: If context says "East Asian woman, 30s, shoulder-length black hair, white blouse, navy pants" your prompt MUST begin with those exact details
-${moodGuidance}
+${moodGuidance}${productionConstraintGuidance}
 Output only the prompt text, no JSON or explanation.`;
 
   let userMessage = `ACTION: ${description}`;
@@ -1606,9 +1619,75 @@ function buildCinematographyGuidance(shot) {
   return parts.join('\n');
 }
 
+// Production style presets - common camera/visual/continuity constraint combinations
+const PRODUCTION_PRESETS = {
+  "stage_play": {
+    camera: { perspective: "audience_front_row", movement: "locked", angle_consistency: true, framing: "proscenium" },
+    visual: { lighting: "theatrical_spotlight", palette: "high_contrast" },
+    continuity: { location: "single", time_flow: "real_time" }
+  },
+  "documentary": {
+    camera: { perspective: "observational", movement: "minimal", framing: "natural" },
+    visual: { lighting: "natural", texture: "film_grain" },
+    continuity: { time_flow: "compressed" }
+  },
+  "music_video": {
+    camera: { movement: "dynamic", framing: "cinematic" },
+    visual: { palette: "saturated", lighting: "stylized" },
+    continuity: { time_flow: "fragmented" }
+  },
+  "noir": {
+    camera: { perspective: "character_pov", framing: "intimate" },
+    visual: { palette: "monochrome", lighting: "noir", texture: "film_grain" },
+    continuity: { time_flow: "elliptical" }
+  }
+};
+
+// Build human-readable constraint text from production rules
+function buildProductionConstraintText(rules) {
+  if (!rules) return null;
+  const parts = [];
+
+  if (rules.camera) {
+    const cam = [];
+    if (rules.camera.perspective) cam.push(`${rules.camera.perspective} perspective`);
+    if (rules.camera.movement) cam.push(`${rules.camera.movement} camera movement`);
+    if (rules.camera.framing) cam.push(`${rules.camera.framing} framing`);
+    if (rules.camera.angle_consistency) cam.push('consistent angle across all shots');
+    if (cam.length) parts.push(`CAMERA: ${cam.join(', ')}`);
+  }
+
+  if (rules.visual) {
+    const vis = [];
+    if (rules.visual.lighting) vis.push(`${rules.visual.lighting} lighting`);
+    if (rules.visual.palette) vis.push(`${rules.visual.palette} color palette`);
+    if (rules.visual.texture) vis.push(`${rules.visual.texture} texture`);
+    if (vis.length) parts.push(`VISUAL: ${vis.join(', ')}`);
+  }
+
+  if (rules.continuity) {
+    const cont = [];
+    if (rules.continuity.location === 'single') cont.push('single location throughout');
+    if (rules.continuity.time_flow) cont.push(`${rules.continuity.time_flow} time flow`);
+    if (rules.continuity.weather) cont.push(`${rules.continuity.weather} weather`);
+    if (cont.length) parts.push(`CONTINUITY: ${cont.join(', ')}`);
+  }
+
+  return parts.length > 0 ? parts.join('\n') : null;
+}
+
 // Reusable function to generate shot structure
-async function generateStructureInternal(concept, duration, arc, claudeKey) {
+async function generateStructureInternal(concept, duration, arc, claudeKey, productionRules = null) {
   const arcDescription = ARC_TYPES[arc];
+
+  // Build production rules section if provided
+  const productionRulesSection = productionRules ? `
+## Production Rules (MUST RESPECT)
+These constraints apply to ALL shots in this piece:
+${buildProductionConstraintText(productionRules)}
+
+Design shots that work WITHIN these constraints. Do not suggest camera movements, locations, or visual styles that would violate them.
+` : '';
 
   const systemPrompt = `You are a shot structure architect for short-form video. Your job is to divide a video concept into shots with appropriate roles and energy levels.
 
@@ -1671,7 +1750,7 @@ mysterious, urgent, contemplative, chaotic, bittersweet, whimsical, ominous, ser
 - wave: Oscillate between high and low energy, creating rhythm
 - flat-punctuate: Maintain steady baseline with occasional sharp spikes
 - bookend: Start and end strong, with lower energy in the middle
-
+${productionRulesSection}
 ## Output Format
 Return a JSON object with:
 - concept: the original concept
@@ -1788,7 +1867,7 @@ app.post('/api/generate-project-from-structure', async (req, res) => {
     return res.status(400).json({ error: 'No Claude API key configured' });
   }
 
-  const { concept, duration, arc = 'tension-release', style, include_vo } = req.body;
+  const { concept, duration, arc = 'tension-release', style, include_vo, production_style, production_rules } = req.body;
 
   if (!concept) {
     return res.status(400).json({ error: 'concept is required' });
@@ -1804,10 +1883,16 @@ app.post('/api/generate-project-from-structure', async (req, res) => {
     });
   }
 
+  // Resolve production rules from preset or custom
+  let resolvedProductionRules = production_rules || null;
+  if (production_style && PRODUCTION_PRESETS[production_style]) {
+    resolvedProductionRules = PRODUCTION_PRESETS[production_style];
+  }
+
   try {
     // Step 1: Generate the structure
     console.log('Generating project structure...');
-    const structure = await generateStructureInternal(concept, duration, arc, config.claudeKey);
+    const structure = await generateStructureInternal(concept, duration, arc, config.claudeKey, resolvedProductionRules);
 
     // Step 2: Generate descriptions for each shot
     console.log('Generating shot descriptions...');
@@ -1848,10 +1933,16 @@ Return a JSON array of description strings, one for each shot in order.`;
       ? `\nCHARACTERS:\n${structure.characters.map(c => `- ${c.id}: ${c.description}`).join('\n')}\n`
       : '';
 
+    // Build production constraints context if provided
+    const productionConstraintText = buildProductionConstraintText(resolvedProductionRules);
+    const productionContext = productionConstraintText
+      ? `\nPRODUCTION CONSTRAINTS (apply to ALL shots - these are LOCKED):\n${productionConstraintText}\n`
+      : '';
+
     let userMessage = `CONCEPT: ${concept}
 STYLE: ${style || 'unspecified'}
 ARC: ${arc} (${structure.arc_description})
-${charactersContext}
+${charactersContext}${productionContext}
 Generate ${include_vo ? 'a description and VO decision' : 'a description'} for each of these shots:
 
 ${structure.shots.map((shot, i) => {
@@ -1965,11 +2056,21 @@ app.post('/api/execute-project', async (req, res) => {
     return res.status(400).json({ error: 'No Veo service account configured' });
   }
 
-  const { project, concept, duration, arc = 'tension-release', style, aspectRatio = '9:16' } = req.body;
+  const { project, concept, duration, arc = 'tension-release', style, aspectRatio = '9:16', production_style, production_rules } = req.body;
 
   // Validate input - need either project or concept
   if (!project && !concept) {
     return res.status(400).json({ error: 'Either project or concept is required' });
+  }
+
+  // Resolve production rules from preset, custom, or project
+  let resolvedProductionRules = production_rules || null;
+  if (production_style && PRODUCTION_PRESETS[production_style]) {
+    resolvedProductionRules = PRODUCTION_PRESETS[production_style];
+  }
+  // If project has production_rules, use those
+  if (project && project.production_rules) {
+    resolvedProductionRules = project.production_rules;
   }
 
   try {
@@ -1990,7 +2091,7 @@ app.post('/api/execute-project', async (req, res) => {
       console.log('Generating project from concept...');
 
       // Generate structure
-      const structure = await generateStructureInternal(concept, duration, arc, config.claudeKey);
+      const structure = await generateStructureInternal(concept, duration, arc, config.claudeKey, resolvedProductionRules);
 
       // Generate descriptions for each shot
       const systemPrompt = `You are a visual storyteller for short-form video. Your job is to write vivid, evocative descriptions of what the viewer sees and feels in each shot.
@@ -2157,7 +2258,8 @@ Return a JSON array of description strings, one for each shot in order.`;
         {
           aspectRatio,
           additionalContext: combinedContext,
-          mood: shot.mood  // Pass mood for atmospheric guidance
+          mood: shot.mood,  // Pass mood for atmospheric guidance
+          productionRules: resolvedProductionRules  // Pass production constraints
         }
       );
 
