@@ -1392,41 +1392,60 @@ app.use('/exports', express.static(path.join(__dirname, 'data', 'exports')));
 // ============ Frame Extraction ============
 
 app.post('/api/extract-frame', async (req, res) => {
-  const { videoPath, timestamp = 0 } = req.body;
-  
+  const { videoPath, timestamp = 0, saveToDisk = false } = req.body;
+
   try {
     const videoFullPath = path.join(__dirname, 'data', videoPath.replace(/^\//, ''));
-    
+
     if (!fs.existsSync(videoFullPath)) {
       return res.status(404).json({ error: 'Video not found' });
     }
-    
-    // Create frames directory if needed
-    const framesDir = path.join(__dirname, 'data', 'frames');
-    if (!fs.existsSync(framesDir)) {
-      fs.mkdirSync(framesDir, { recursive: true });
+
+    if (saveToDisk) {
+      // Save frame to generated-images/ directory
+      const imagesDir = path.join(__dirname, 'generated-images');
+      if (!fs.existsSync(imagesDir)) {
+        fs.mkdirSync(imagesDir, { recursive: true });
+      }
+
+      const randomId = Math.random().toString(36).substring(2, 8);
+      const filename = `frame_${Date.now()}_${randomId}.png`;
+      const filepath = path.join(imagesDir, filename);
+
+      const ffmpegCmd = `ffmpeg -y -ss ${timestamp} -i "${videoFullPath}" -vframes 1 "${filepath}"`;
+      console.log('Extracting frame to disk:', ffmpegCmd);
+      execSync(ffmpegCmd, { stdio: 'pipe' });
+
+      console.log('Saved frame to:', filepath);
+      res.json({
+        imagePath: filepath,
+        imageUrl: `/generated-images/${filename}`
+      });
+    } else {
+      // Return base64 dataUrl (original behavior)
+      const framesDir = path.join(__dirname, 'data', 'frames');
+      if (!fs.existsSync(framesDir)) {
+        fs.mkdirSync(framesDir, { recursive: true });
+      }
+
+      const frameFilename = `frame_${Date.now()}.jpg`;
+      const framePath = path.join(framesDir, frameFilename);
+
+      const ffmpegCmd = `ffmpeg -y -ss ${timestamp} -i "${videoFullPath}" -vframes 1 -q:v 2 "${framePath}"`;
+      console.log('Extracting frame:', ffmpegCmd);
+      execSync(ffmpegCmd, { stdio: 'pipe' });
+
+      const frameBuffer = fs.readFileSync(framePath);
+      const base64 = frameBuffer.toString('base64');
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+
+      fs.unlinkSync(framePath);
+
+      res.json({
+        success: true,
+        dataUrl: dataUrl
+      });
     }
-    
-    const frameFilename = `frame_${Date.now()}.jpg`;
-    const framePath = path.join(framesDir, frameFilename);
-    
-    // Extract frame at specified timestamp using ffmpeg
-    const ffmpegCmd = `ffmpeg -y -ss ${timestamp} -i "${videoFullPath}" -vframes 1 -q:v 2 "${framePath}"`;
-    console.log('Extracting frame:', ffmpegCmd);
-    execSync(ffmpegCmd, { stdio: 'pipe' });
-    
-    // Read frame and convert to base64
-    const frameBuffer = fs.readFileSync(framePath);
-    const base64 = frameBuffer.toString('base64');
-    const dataUrl = `data:image/jpeg;base64,${base64}`;
-    
-    // Clean up frame file
-    fs.unlinkSync(framePath);
-    
-    res.json({
-      success: true,
-      dataUrl: dataUrl
-    });
   } catch (err) {
     console.error('Frame extraction error:', err);
     res.status(500).json({ error: err.message });
