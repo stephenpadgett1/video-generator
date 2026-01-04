@@ -87,9 +87,19 @@ POST /api/generate-project-from-structure {
   "style": "cinematic, moody lighting",                   // optional
   "include_vo": true                                      // optional - generates VO text + timing for select shots
 }
-// Response includes shots with: shot_id, role, energy, duration_target, position, description
+// Response includes:
+// - characters: array of { id, description } for people/entities in the concept
+// - shots: array with shot_id, role, energy, duration_target, position, description, characters (array of character IDs)
 // When include_vo: true, shots also have: vo: { text, timing } or vo: null
 ```
+
+**Character Extraction:**
+Characters are automatically extracted from concepts. Each character has:
+- `id`: snake_case identifier (e.g., "woman_1", "elderly_man", "robot_dog")
+- `description`: visual appearance suitable for image generation (age, clothing, hair, distinguishing features)
+
+Only people and anthropomorphized entities with agency are extracted as characters (not objects or locations).
+Each shot includes a `characters` array listing which character IDs appear in that shot.
 
 **Video Assembly (`/api/assemble`):**
 ```json
@@ -300,7 +310,7 @@ Complete end-to-end video generation follows these steps:
 POST /api/generate-project-from-structure
 { "concept": "...", "duration": 12, "arc": "tension-release", "style": "...", "include_vo": true }
 ```
-Returns project with shots array. Each shot has: `shot_id`, `role`, `energy`, `duration_target`, `description`, and optionally `vo: { text, timing }`.
+Returns project with `characters` array and `shots` array. Each character has: `id`, `description`. Each shot has: `shot_id`, `role`, `energy`, `duration_target`, `description`, `characters` (array of character IDs), and optionally `vo: { text, timing }`.
 
 ### Step 2: Execute Project (Generate Videos)
 ```
