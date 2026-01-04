@@ -1520,6 +1520,92 @@ const MOOD_VISUALS = {
   'serene': 'soft pastel palette, wide calm compositions, diffused natural light, gentle gradients'
 };
 
+// Tension to camera/framing mapping
+const TENSION_TO_CAMERA = {
+  'very_low': 'wide establishing shots, plenty of headroom, relaxed symmetrical framing, static camera',
+  'low': 'medium-wide shots, balanced framing, gentle movements, breathing room in composition',
+  'medium': 'medium shots, standard framing, subtle push-ins or tracking, neutral headroom',
+  'high': 'tighter framing, reduced headroom, slow deliberate push-ins, held moments before cuts',
+  'very_high': 'extreme close-ups, claustrophobic framing, minimal headroom, lingering uncomfortable holds'
+};
+
+// Energy to camera movement mapping
+const ENERGY_TO_MOVEMENT = {
+  'very_low': 'locked-off static camera, no movement, tableau framing',
+  'low': 'subtle drift, almost imperceptible dolly, gentle floating',
+  'medium': 'smooth tracking, standard dolly or steadicam, purposeful movement',
+  'high': 'dynamic tracking, energetic camera movement, motivated whip pans',
+  'very_high': 'kinetic handheld, rapid movement, visceral unstable energy'
+};
+
+// Shot type vocabulary for different narrative functions
+const SHOT_TYPES = {
+  'establish': ['wide establishing shot', 'aerial view', 'slow reveal', 'environmental portrait'],
+  'emphasize': ['medium close-up', 'insert detail shot', 'rack focus to subject', 'isolation framing'],
+  'transition': ['match cut setup', 'movement through space', 'time-lapse compression', 'spatial bridge'],
+  'punctuate': ['snap zoom', 'dramatic reveal', 'freeze moment', 'impact frame'],
+  'reveal': ['slow push-in to reveal', 'pan to discover', 'focus pull revelation', 'perspective shift'],
+  'resolve': ['pull back to wide', 'settling static frame', 'symmetrical closure', 'breath moment']
+};
+
+// Camera movements vocabulary
+const CAMERA_MOVEMENTS = {
+  'static': 'locked-off tripod, no movement',
+  'dolly_in': 'smooth forward movement toward subject',
+  'dolly_out': 'smooth backward movement away from subject',
+  'tracking': 'lateral movement following action',
+  'push_in': 'slow intentional move toward subject for emphasis',
+  'pull_back': 'retreating movement for context or release',
+  'orbit': 'circular movement around subject',
+  'crane_up': 'vertical rise revealing scope',
+  'crane_down': 'vertical descent into scene',
+  'handheld': 'organic human movement, slight instability',
+  'float': 'dreamy weightless drift'
+};
+
+// Helper to get tension category from 0-1 value
+function getTensionCategory(tension) {
+  if (tension <= 0.2) return 'very_low';
+  if (tension <= 0.4) return 'low';
+  if (tension <= 0.6) return 'medium';
+  if (tension <= 0.8) return 'high';
+  return 'very_high';
+}
+
+// Helper to get energy category from 0-1 value
+function getEnergyCategory(energy) {
+  if (energy <= 0.2) return 'very_low';
+  if (energy <= 0.4) return 'low';
+  if (energy <= 0.6) return 'medium';
+  if (energy <= 0.8) return 'high';
+  return 'very_high';
+}
+
+// Build cinematographic guidance for a shot
+function buildCinematographyGuidance(shot) {
+  const parts = [];
+
+  if (shot.mood && MOOD_VISUALS[shot.mood]) {
+    parts.push(`MOOD (${shot.mood}): ${MOOD_VISUALS[shot.mood]}`);
+  }
+
+  if (typeof shot.tension === 'number') {
+    const tensionCat = getTensionCategory(shot.tension);
+    parts.push(`TENSION (${shot.tension.toFixed(1)}): ${TENSION_TO_CAMERA[tensionCat]}`);
+  }
+
+  if (typeof shot.energy === 'number') {
+    const energyCat = getEnergyCategory(shot.energy);
+    parts.push(`ENERGY (${shot.energy.toFixed(1)}): ${ENERGY_TO_MOVEMENT[energyCat]}`);
+  }
+
+  if (shot.role && SHOT_TYPES[shot.role]) {
+    parts.push(`SHOT OPTIONS: ${SHOT_TYPES[shot.role].join(', ')}`);
+  }
+
+  return parts.join('\n');
+}
+
 // Reusable function to generate shot structure
 async function generateStructureInternal(concept, duration, arc, claudeKey) {
   const arcDescription = ARC_TYPES[arc];
@@ -1726,39 +1812,36 @@ app.post('/api/generate-project-from-structure', async (req, res) => {
     // Step 2: Generate descriptions for each shot
     console.log('Generating shot descriptions...');
 
+    const cinematographyPreamble = `You are a DIRECTOR-CINEMATOGRAPHER for short-form video. You write descriptions that capture both WHAT HAPPENS (action, emotion) and HOW IT'S SHOT (camera, framing, movement).
+
+Each shot comes with cinematographic guidance based on its mood, tension, and energy. USE THIS GUIDANCE to inform your visual choices.
+
+Write descriptions that include:
+1. THE ACTION: What characters do, their emotional state, the moment
+2. THE SHOT: Camera position, framing (wide/medium/close), composition
+3. THE MOVEMENT: Camera motion (static, push-in, tracking, etc.)
+4. THE ATMOSPHERE: Lighting quality, color feeling, visual texture
+
+Example description:
+"Close-up on her weathered hands as they hesitate above the keyboard. Shallow depth of field isolates the trembling fingers against a soft blur of warm lamplight. The camera holds perfectly still - a breath of tension before action."`;
+
     const systemPrompt = include_vo
-      ? `You are a visual storyteller for short-form video. Your job is to write vivid, evocative descriptions AND decide which shots should carry voiceover.
+      ? `${cinematographyPreamble}
 
-Write descriptions that are:
-- Visual and sensory (what we see, the mood, the atmosphere)
-- Appropriate to the shot's role and energy level
-- Consistent with the overall concept and style
-- NOT technical video prompts (avoid camera directions, aspect ratios, technical jargon)
-
-For voiceover decisions:
+Additionally, decide which shots should carry voiceover:
 - NOT every shot needs VO - be selective based on narrative flow
-- Good VO candidates: establish, reveal, resolve roles (moments of clarity or transition)
-- Poor VO candidates: high-energy punctuate shots, rapid transitions, pure action moments
-- VO text should be sparse, evocative, and match the tone of the visuals
-- Timing indicates when VO starts: "start" (with shot), "middle" (mid-shot), or "end" (toward end)
+- Good VO candidates: establish, reveal, resolve roles (moments of clarity)
+- Poor VO candidates: high-energy punctuate shots, rapid action moments
+- VO text should be sparse, evocative, and match the tone
+- Timing: "start" (with shot), "middle" (mid-shot), or "end" (toward end)
 
 Return a JSON array where each element is:
 { "description": "...", "vo": { "text": "...", "timing": "start|middle|end" } }
 or for shots without VO:
 { "description": "...", "vo": null }`
-      : `You are a visual storyteller for short-form video. Your job is to write vivid, evocative descriptions of what the viewer sees and feels in each shot.
+      : `${cinematographyPreamble}
 
-Write descriptions that are:
-- Visual and sensory (what we see, the mood, the atmosphere)
-- Appropriate to the shot's role and energy level
-- Consistent with the overall concept and style
-- NOT technical video prompts (avoid camera directions, aspect ratios, technical jargon)
-
-The description should paint a picture of the moment, not instruct a video generator.
-
-You will receive a list of shots with their roles, energy levels, and positions in the arc. Generate a description for each one.
-
-Return a JSON array of descriptions in the same order as the shots provided.`;
+Return a JSON array of description strings, one for each shot in order.`;
 
     // Build character context if characters exist
     const charactersContext = structure.characters && structure.characters.length > 0
@@ -1771,12 +1854,20 @@ ARC: ${arc} (${structure.arc_description})
 ${charactersContext}
 Generate ${include_vo ? 'a description and VO decision' : 'a description'} for each of these shots:
 
-${structure.shots.map((shot, i) => `${i + 1}. ${shot.shot_id}
+${structure.shots.map((shot, i) => {
+      const cinematographyGuidance = buildCinematographyGuidance(shot);
+      return `${i + 1}. ${shot.shot_id}
    - Role: ${shot.role}
    - Energy: ${shot.energy}
+   - Tension: ${shot.tension ?? 'unspecified'}
+   - Mood: ${shot.mood ?? 'unspecified'}
    - Duration: ${shot.duration_target}s
    - Position: ${shot.position} (0=start, 1=end)
-   - Characters: ${shot.characters && shot.characters.length > 0 ? shot.characters.join(', ') : 'none'}`).join('\n\n')}
+   - Characters: ${shot.characters && shot.characters.length > 0 ? shot.characters.join(', ') : 'none'}
+
+   CINEMATOGRAPHY GUIDANCE:
+   ${cinematographyGuidance || 'Use your judgment based on role and energy'}`;
+    }).join('\n\n')}
 
 ${include_vo
       ? 'Return a JSON array of objects, each with "description" (string) and "vo" (object with text/timing, or null).'
