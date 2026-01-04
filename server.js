@@ -1681,7 +1681,7 @@ Provide:
 // ============ Video Assembly ============
 
 app.post('/api/assemble', async (req, res) => {
-  const { shots, outputFilename, textOverlays = [], musicTrack, musicVolume = 0.3 } = req.body;
+  const { shots, outputFilename, textOverlays = [], musicTrack, musicVolume = 0.3, videoVolume = 1.0 } = req.body;
 
   // shots should be array of: { videoPath, voPath?, trimStart?, trimEnd?, energy? }
   // Energy-based transitions when energy values are provided:
@@ -1692,6 +1692,7 @@ app.post('/api/assemble', async (req, res) => {
   //   - position: "top", "center", or "bottom" (default "bottom")
   // musicTrack (optional): path to audio file to mix under video
   // musicVolume (optional): 0.0-1.0, default 0.3
+  // videoVolume (optional): 0.0-1.0, default 1.0 - controls video's native audio level
   
   if (!shots || shots.length === 0) {
     return res.status(400).json({ error: 'No shots provided' });
@@ -1885,7 +1886,8 @@ app.post('/api/assemble', async (req, res) => {
     // Determine post-processing steps needed
     const hasOverlays = textOverlays && textOverlays.length > 0;
     const hasMusic = musicTrack && typeof musicTrack === 'string';
-    const needsPostProcessing = hasOverlays || hasMusic;
+    const hasVolumeAdjust = videoVolume !== 1.0;
+    const needsPostProcessing = hasOverlays || hasMusic || hasVolumeAdjust;
 
     // Determine output paths for each stage
     let currentOutput = needsPostProcessing ? path.join(tempDir, 'concat_output.mp4') : outputPath;
@@ -1929,28 +1931,38 @@ app.post('/api/assemble', async (req, res) => {
       currentOutput = overlayOutput;
     }
 
-    // Mix music track if present
+    // Mix music track if present, or adjust video volume if specified
     if (hasMusic) {
       const musicFullPath = path.join(__dirname, 'data', musicTrack.replace(/^\//, ''));
 
       if (!fs.existsSync(musicFullPath)) {
         console.log(`Music track not found: ${musicTrack}, skipping music mix`);
       } else {
-        console.log(`Mixing music track: ${musicTrack} at volume ${musicVolume}`);
+        console.log(`Mixing music track: ${musicTrack} at volume ${musicVolume}, video volume: ${videoVolume}`);
 
         // Get video duration for fade out timing
         const videoDuration = getClipDuration(currentOutput);
         const fadeStart = Math.max(0, videoDuration - 1);
 
         // Mix music under video audio
+        // [0:a] = video audio with volume adjustment
         // [1:a] = music with volume adjustment and fade out
-        // [0:a] = video audio
         // amix combines them, duration=first trims music to video length
-        const musicCmd = `ffmpeg -y -i "${currentOutput}" -i "${musicFullPath}" -filter_complex "[1:a]volume=${musicVolume},afade=t=out:st=${fadeStart}:d=1[music];[0:a][music]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac "${outputPath}"`;
+        const musicCmd = `ffmpeg -y -i "${currentOutput}" -i "${musicFullPath}" -filter_complex "[0:a]volume=${videoVolume}[vid];[1:a]volume=${musicVolume},afade=t=out:st=${fadeStart}:d=1[music];[vid][music]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac "${outputPath}"`;
         console.log('Mixing music:', musicCmd);
         execSync(musicCmd, { stdio: 'pipe' });
         currentOutput = outputPath;
       }
+    } else if (videoVolume !== 1.0) {
+      // No music but video volume adjustment requested
+      console.log(`Adjusting video volume to ${videoVolume}`);
+      const volOutput = path.join(tempDir, 'volume_adjusted.mp4');
+      const volCmd = `ffmpeg -y -i "${currentOutput}" -af "volume=${videoVolume}" -c:v copy -c:a aac "${volOutput}"`;
+      execSync(volCmd, { stdio: 'pipe' });
+
+      // Move to final output
+      fs.renameSync(volOutput, outputPath);
+      currentOutput = outputPath;
     }
 
     // Get duration of final video
