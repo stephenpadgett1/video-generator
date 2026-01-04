@@ -29,7 +29,12 @@ GET /api/jobs → array of all jobs
 ```json
 POST { "concept": "...", "duration": 12, "arc": "tension-release", "style": "...", "include_vo": true }
 ```
-Returns `{ characters: [{ id, description }], environments: [{ id, description, primary }], shots: [{ shot_id, role, energy, duration_target, description, characters, environment, vo? }] }`
+Returns `{ characters, environments, shots }` where each shot includes:
+- `energy` (0-1): Pace/intensity
+- `tension` (0-1): Anticipation/suspense (independent of energy)
+- `mood`: Emotional color (hopeful, melancholic, tense, peaceful, unsettling, triumphant, intimate, desolate, mysterious, urgent, contemplative, chaotic, bittersweet, whimsical, ominous, serene)
+
+Arc types: `linear-build`, `tension-release`, `wave`, `flat-punctuate`, `bookend`
 
 ### Character Locking (`/api/lock-character`)
 Generates reference image and extracts immutable visual features for character consistency.
@@ -57,12 +62,18 @@ POST { "concept": "...", "duration": 12, "style": "..." }
 ### Video Assembly (`/api/assemble`)
 ```json
 POST {
-  "shots": [{ "videoPath": "/video/clip.mp4", "energy": 0.5 }],
+  "shots": [{ "videoPath": "/video/clip.mp4", "energy": 0.5, "tension": 0.3 }],
   "audioLayers": [{ "type": "vo", "text": "...", "voice_id": "...", "volume": 1, "startTime": 0 }],
   "outputFilename": "output.mp4"
 }
 ```
-Energy-based transitions: drop ≥0.4 → black insert, rise ≥0.4 → hard cut, change <0.2 → crossfade.
+**Tension-aware transitions** (tension takes priority when available):
+- High tension → low tension: long crossfade (0.5s) for catharsis
+- Low tension → high tension: black insert (breath before impact)
+- Sustained high tension: hard cuts (maintain suspense)
+
+**Energy-based fallback**: drop ≥0.4 → black, rise ≥0.4 → hard cut, change <0.2 → crossfade.
+
 audioLayers support `path` for existing files OR `text` + `voice_id` for inline TTS.
 
 ### Other Endpoints
