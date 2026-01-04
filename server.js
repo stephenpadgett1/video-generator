@@ -1082,7 +1082,7 @@ Generate the first and last frame image prompts.`;
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-20250514',
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }]
@@ -1197,7 +1197,7 @@ Break this shot into takes.`;
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-20250514',
         max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }]
@@ -1298,15 +1298,25 @@ async function generateVeoPromptInternal(description, durationSeconds, style, cl
     firstFrameDescription,
     lastFrameDescription,
     previousTakeDescription,
-    additionalContext
+    additionalContext,
+    mood
   } = options;
+
+  // Build mood guidance if mood is specified
+  let moodGuidance = '';
+  if (mood && MOOD_VISUALS[mood]) {
+    moodGuidance = `
+MOOD ATMOSPHERE:
+The emotional tone is "${mood}". Incorporate these visual qualities: ${MOOD_VISUALS[mood]}
+Ensure lighting, color palette, and composition support this mood.`;
+  }
 
   const systemPrompt = `You are a cinematographer writing prompts for Veo, an AI video generator.
 
 Given the action description and context, write a detailed video generation prompt that:
 - Describes the motion/action clearly
 - Specifies camera movement and angle
-- Includes lighting and visual style
+- Includes lighting and visual style that supports the mood
 - If a starting frame is described, ensure the video begins from that visual state
 - If an ending frame is described, guide the action toward that visual state
 - Maintains consistency with any previous take context
@@ -1317,7 +1327,7 @@ If a CHARACTER description is provided in CONTEXT, you MUST:
 2. Include ALL details verbatim: physical features, specific clothing colors/items, expression
 3. Do NOT paraphrase or omit any character details - copy them exactly
 4. Example: If context says "East Asian woman, 30s, shoulder-length black hair, white blouse, navy pants" your prompt MUST begin with those exact details
-
+${moodGuidance}
 Output only the prompt text, no JSON or explanation.`;
 
   let userMessage = `ACTION: ${description}`;
@@ -1338,7 +1348,7 @@ Output only the prompt text, no JSON or explanation.`;
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-20250514',
       max_tokens: 1024,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }]
@@ -1440,7 +1450,7 @@ Output only the prompt text, no JSON or explanation.`;
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-20250514',
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }]
@@ -1482,6 +1492,34 @@ const ARC_TYPES = {
   'bookend': 'Strong open and close with lower middle'
 };
 
+// Mood types for emotional coloring (separate from energy)
+const MOOD_TYPES = [
+  'hopeful', 'melancholic', 'tense', 'peaceful',
+  'unsettling', 'triumphant', 'intimate', 'desolate',
+  'mysterious', 'urgent', 'contemplative', 'chaotic',
+  'bittersweet', 'whimsical', 'ominous', 'serene'
+];
+
+// Mood to visual atmosphere mapping for prompt generation
+const MOOD_VISUALS = {
+  'hopeful': 'warm golden light, soft focus, uplifting composition, gentle lens flare',
+  'melancholic': 'muted desaturated colors, soft shadows, contemplative framing, overcast lighting',
+  'tense': 'high contrast, tight claustrophobic framing, uneasy stillness, sharp shadows',
+  'peaceful': 'soft diffused light, balanced composition, gentle movement, pastel tones',
+  'unsettling': 'slightly off-center framing, unnatural color grading, lingering static shots, wrong angles',
+  'triumphant': 'bright expansive lighting, low angle heroic framing, warm golden hour tones, dynamic composition',
+  'intimate': 'shallow depth of field, close framing, warm skin tones, soft directional light',
+  'desolate': 'cold blue-grey palette, empty negative space, distant framing, harsh flat lighting',
+  'mysterious': 'deep shadows, selective lighting, obscured details, cool undertones with warm accents',
+  'urgent': 'handheld energy, quick cuts implied, high saturation, dramatic side lighting',
+  'contemplative': 'still camera, balanced symmetry, natural muted tones, even soft lighting',
+  'chaotic': 'Dutch angles, high contrast, fragmented composition, mixed color temperatures',
+  'bittersweet': 'warm tones with cool shadows, nostalgic soft focus, golden hour fading to blue',
+  'whimsical': 'vibrant saturated colors, playful asymmetry, bright even lighting, fantastical elements',
+  'ominous': 'deep blacks, silhouettes, underexposed backgrounds, cold color cast, looming compositions',
+  'serene': 'soft pastel palette, wide calm compositions, diffused natural light, gentle gradients'
+};
+
 // Reusable function to generate shot structure
 async function generateStructureInternal(concept, duration, arc, claudeKey) {
   const arcDescription = ARC_TYPES[arc];
@@ -1517,12 +1555,29 @@ For each environment, provide:
 - reveal: Unveil something new
 - resolve: Conclude, bring closure
 
-## Energy Scale (0-1)
+## Energy Scale (0-1) - Pace and Intensity
 - 0.0-0.2: Very calm, still, quiet
 - 0.2-0.4: Low energy, subtle movement
 - 0.4-0.6: Moderate energy, active but controlled
 - 0.6-0.8: High energy, dynamic
 - 0.8-1.0: Peak intensity, maximum impact
+
+## Tension Scale (0-1) - Anticipation and Suspense (SEPARATE from energy)
+- 0.0-0.2: Resolved, no suspense, things have settled
+- 0.2-0.4: Mild anticipation, something may happen
+- 0.4-0.6: Building suspense, audience expects something
+- 0.6-0.8: High tension, something MUST happen soon
+- 0.8-1.0: Maximum suspense, the moment before release
+
+Note: Tension and energy are INDEPENDENT. A shot can be:
+- High energy + low tension (action scene after climax - exciting but resolved)
+- Low energy + high tension (someone frozen in fear - still but suspenseful)
+- High energy + high tension (chase leading to confrontation)
+- Low energy + low tension (peaceful resolution)
+
+## Mood Vocabulary - Emotional Color (choose one per shot)
+hopeful, melancholic, tense, peaceful, unsettling, triumphant, intimate, desolate,
+mysterious, urgent, contemplative, chaotic, bittersweet, whimsical, ominous, serene
 
 ## Arc Types
 - linear-build: Start low, steadily increase energy to finish high
@@ -1547,7 +1602,9 @@ Return a JSON object with:
 - shots: array of shot objects, each with:
   - shot_id: "shot_1", "shot_2", etc.
   - role: one of the role vocabulary terms
-  - energy: 0-1 value matching the arc shape
+  - energy: 0-1 value for pace/intensity matching the arc shape
+  - tension: 0-1 value for anticipation/suspense (independent of energy)
+  - mood: one of the mood vocabulary terms for emotional color
   - duration_target: seconds for this shot (all shots should sum to total duration)
   - position: normalized position in the piece (0.0 = start, 1.0 = end)
   - characters: array of character IDs that appear in this shot (empty array if none)
@@ -1555,6 +1612,8 @@ Return a JSON object with:
 
 Aim for 3-6 shots depending on duration. Shorter pieces (under 15s) should have fewer shots.
 Match the energy curve to the specified arc type.
+Assign tension values that reflect narrative suspense (often peaks just before a reveal or climax).
+Choose moods that support the emotional journey of the piece.
 Assign roles that make narrative sense for the concept.
 
 Return ONLY valid JSON, no explanation.`;
@@ -1575,7 +1634,7 @@ Generate a shot structure for this piece.`;
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-20250514',
       max_tokens: 1024,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }]
@@ -1731,7 +1790,7 @@ ${include_vo
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-20250514',
         max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }]
@@ -1875,7 +1934,7 @@ Return a JSON array of description strings, one for each shot in order.`;
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-opus-4-20250514',
           max_tokens: 2048,
           system: systemPrompt,
           messages: [{ role: 'user', content: userMessage }]
@@ -2006,7 +2065,8 @@ Return a JSON array of description strings, one for each shot in order.`;
         config.claudeKey,
         {
           aspectRatio,
-          additionalContext: combinedContext
+          additionalContext: combinedContext,
+          mood: shot.mood  // Pass mood for atmospheric guidance
         }
       );
 
@@ -2846,17 +2906,45 @@ app.post('/api/assemble', async (req, res) => {
       execSync(cmd, { stdio: 'pipe' });
     };
 
-    // Determine transition type between shots
-    const getTransitionType = (prevEnergy, currEnergy) => {
+    // Determine transition type between shots based on energy AND tension
+    const getTransitionType = (prevShot, currShot) => {
+      const prevEnergy = prevShot?.energy;
+      const currEnergy = currShot?.energy;
+      const prevTension = prevShot?.tension;
+      const currTension = currShot?.tension;
+
+      // Default to energy-only logic if tension not provided
       if (typeof prevEnergy !== 'number' || typeof currEnergy !== 'number') {
-        return 'cut'; // No energy data, default cut
+        return 'cut';
       }
-      const change = currEnergy - prevEnergy;
-      if (change <= -0.4) {
+
+      const energyChange = currEnergy - prevEnergy;
+      const tensionChange = (typeof prevTension === 'number' && typeof currTension === 'number')
+        ? currTension - prevTension
+        : null;
+
+      // Tension-aware transitions (if tension data available)
+      if (tensionChange !== null) {
+        // High tension release (tension drops significantly) - longer crossfade for catharsis
+        if (tensionChange <= -0.4 && currTension < 0.3) {
+          return 'crossfade_long'; // 0.5s crossfade for tension release
+        }
+        // Tension spike (low to high) - breath before impact
+        if (tensionChange >= 0.4 && prevTension < 0.3) {
+          return 'black'; // Pause before high-tension moment
+        }
+        // Sustained high tension - hard cuts maintain suspense
+        if (prevTension >= 0.6 && currTension >= 0.6) {
+          return 'hard_cut';
+        }
+      }
+
+      // Fall back to energy-based logic
+      if (energyChange <= -0.4) {
         return 'black'; // Energy drop >= 0.4
-      } else if (change >= 0.4) {
+      } else if (energyChange >= 0.4) {
         return 'hard_cut'; // Energy rise >= 0.4
-      } else if (Math.abs(change) < 0.2) {
+      } else if (Math.abs(energyChange) < 0.2) {
         return 'crossfade'; // Small change < 0.2
       }
       return 'cut'; // Default for changes between 0.2 and 0.4
@@ -2900,12 +2988,15 @@ app.post('/api/assemble', async (req, res) => {
     const finalClips = [];
 
     for (let i = 1; i < shots.length; i++) {
-      const prevEnergy = shots[i - 1].energy;
-      const currEnergy = shots[i].energy;
-      const transition = getTransitionType(prevEnergy, currEnergy);
+      const prevShot = shots[i - 1];
+      const currShot = shots[i];
+      const transition = getTransitionType(prevShot, currShot);
       const nextClipPath = normalizedPaths[i];
 
-      console.log(`Transition ${i - 1} → ${i}: ${transition} (energy: ${prevEnergy ?? 'none'} → ${currEnergy ?? 'none'})`);
+      // Log transition with energy and tension info
+      const prevInfo = `e:${prevShot.energy ?? '-'} t:${prevShot.tension ?? '-'}`;
+      const currInfo = `e:${currShot.energy ?? '-'} t:${currShot.tension ?? '-'}`;
+      console.log(`Transition ${i - 1} → ${i}: ${transition} (${prevInfo} → ${currInfo})`);
 
       if (transition === 'black') {
         // Add current clip, then black, then continue with next
@@ -2921,9 +3012,14 @@ app.post('/api/assemble', async (req, res) => {
         finalClips.push(trimmedPath);
         currentClipPath = nextClipPath;
       } else if (transition === 'crossfade') {
-        // Crossfade current with next, result becomes new current
+        // Standard crossfade (0.25s) for small energy changes
         const crossfadePath = path.join(tempDir, `crossfade_${i - 1}_${i}.mp4`);
         applyCrossfade(currentClipPath, nextClipPath, crossfadePath, 0.25);
+        currentClipPath = crossfadePath;
+      } else if (transition === 'crossfade_long') {
+        // Longer crossfade (0.5s) for tension release moments
+        const crossfadePath = path.join(tempDir, `crossfade_long_${i - 1}_${i}.mp4`);
+        applyCrossfade(currentClipPath, nextClipPath, crossfadePath, 0.5);
         currentClipPath = crossfadePath;
       } else {
         // Default cut - just add current clip
