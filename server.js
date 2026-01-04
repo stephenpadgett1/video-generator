@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
+const { computeVoiceSettings, computeMusicProfile, computeAudioProfile } = require('./audio-rules');
 
 const app = express();
 const PORT = 3000;
@@ -288,10 +290,36 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
     return res.status(400).json({ error: 'No API key configured' });
   }
 
-  const { voice_id, text, model_id = 'eleven_turbo_v2_5', filename: customFilename } = req.body;
+  const {
+    voice_id,
+    text,
+    model_id = 'eleven_turbo_v2_5',
+    filename: customFilename,
+    // New: mood-aware voice modulation
+    mood,
+    tension,
+    energy,
+    voice_settings: customVoiceSettings
+  } = req.body;
 
   if (!voice_id || !text) {
     return res.status(400).json({ error: 'voice_id and text are required' });
+  }
+
+  // Compute voice settings: custom > mood-based > defaults
+  let voiceSettings = { stability: 0.5, similarity_boost: 0.75 };
+  let computedProfile = null;
+  let speedFactor = 1.0;
+
+  if (customVoiceSettings) {
+    voiceSettings = customVoiceSettings;
+  } else if (mood) {
+    computedProfile = computeVoiceSettings({ mood, tension, energy });
+    voiceSettings = {
+      stability: computedProfile.stability,
+      similarity_boost: computedProfile.similarity_boost
+    };
+    speedFactor = computedProfile.speed_factor;
   }
 
   try {
@@ -304,10 +332,7 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
       body: JSON.stringify({
         text,
         model_id,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
+        voice_settings: voiceSettings
       })
     });
 
@@ -332,15 +357,139 @@ app.post('/api/elevenlabs/tts', async (req, res) => {
     const filepath = path.join(audioDir, filename);
     fs.writeFileSync(filepath, Buffer.from(audioBuffer));
 
+    // Apply speed adjustment via ffmpeg atempo if needed
+    let speedApplied = false;
+    if (speedFactor !== 1.0) {
+      try {
+        const tempPath = filepath.replace('.mp3', '_temp.mp3');
+        // ffmpeg atempo range is 0.5-2.0
+        const clampedSpeed = Math.max(0.5, Math.min(2.0, speedFactor));
+        execSync(`ffmpeg -y -i "${filepath}" -filter:a "atempo=${clampedSpeed}" "${tempPath}"`, { stdio: 'pipe' });
+        fs.unlinkSync(filepath);
+        fs.renameSync(tempPath, filepath);
+        speedApplied = true;
+      } catch (ffmpegErr) {
+        console.error('ffmpeg atempo error:', ffmpegErr.message);
+        // Continue with original file if ffmpeg fails
+      }
+    }
+
     res.json({
       success: true,
       filename,
-      path: `/audio/tts/${filename}`
+      path: `/audio/tts/${filename}`,
+      voice_settings_used: voiceSettings,
+      speed_factor: speedApplied ? speedFactor : 1.0,
+      mood_profile: computedProfile
     });
   } catch (err) {
     console.error('ElevenLabs TTS error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Test audio profile - generates TTS with mood-based voice modulation
+app.post('/api/test-audio-profile', async (req, res) => {
+  const config = loadConfig();
+  if (!config.elevenLabsKey) {
+    return res.status(400).json({ error: 'No ElevenLabs API key configured' });
+  }
+
+  const {
+    text = 'The moment stretches, suspended between what was and what will be.',
+    mood = 'contemplative',
+    tension = 0.5,
+    energy = 0.5,
+    voice_id
+  } = req.body;
+
+  if (!voice_id) {
+    return res.status(400).json({ error: 'voice_id is required' });
+  }
+
+  // Compute profiles
+  const voiceProfile = computeVoiceSettings({ mood, tension, energy });
+  const musicProfile = computeMusicProfile({ mood, tension, energy });
+
+  // Generate TTS with computed settings
+  try {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': config.elevenLabsKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_turbo_v2_5',
+        voice_settings: {
+          stability: voiceProfile.stability,
+          similarity_boost: voiceProfile.similarity_boost
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      return res.status(response.status).json({ error });
+    }
+
+    const audioBuffer = await response.arrayBuffer();
+
+    // Save audio file
+    const audioDir = path.join(__dirname, 'data', 'audio', 'tts');
+    if (!fs.existsSync(audioDir)) {
+      fs.mkdirSync(audioDir, { recursive: true });
+    }
+
+    const filename = `test_${mood}_t${tension}_e${energy}_${Date.now()}.mp3`;
+    const filepath = path.join(audioDir, filename);
+    fs.writeFileSync(filepath, Buffer.from(audioBuffer));
+
+    // Apply speed adjustment if needed
+    let speedApplied = false;
+    if (voiceProfile.speed_factor !== 1.0) {
+      try {
+        const tempPath = filepath.replace('.mp3', '_temp.mp3');
+        const clampedSpeed = Math.max(0.5, Math.min(2.0, voiceProfile.speed_factor));
+        execSync(`ffmpeg -y -i "${filepath}" -filter:a "atempo=${clampedSpeed}" "${tempPath}"`, { stdio: 'pipe' });
+        fs.unlinkSync(filepath);
+        fs.renameSync(tempPath, filepath);
+        speedApplied = true;
+      } catch (ffmpegErr) {
+        console.error('ffmpeg atempo error:', ffmpegErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      audio_path: `/audio/tts/${filename}`,
+      input: { text, mood, tension, energy },
+      voice_profile: voiceProfile,
+      music_profile: musicProfile,
+      speed_applied: speedApplied
+    });
+  } catch (err) {
+    console.error('Test audio profile error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Compute audio profiles without generating audio
+app.post('/api/compute-audio-profile', (req, res) => {
+  const { shots } = req.body;
+
+  if (!shots || !Array.isArray(shots)) {
+    return res.status(400).json({ error: 'shots array is required' });
+  }
+
+  const profiles = shots.map(shot => ({
+    shot_id: shot.shot_id || shot.id,
+    voice: computeVoiceSettings(shot),
+    music: computeMusicProfile(shot)
+  }));
+
+  res.json({ profiles });
 });
 
 // Serve audio files
@@ -894,8 +1043,6 @@ app.post('/api/veo/status', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-const { execSync } = require('child_process');
 
 // Helper to get video duration using ffprobe
 function getVideoDuration(filepath) {
@@ -3031,6 +3178,23 @@ app.post('/api/assemble', async (req, res) => {
           throw new Error('No ElevenLabs API key configured for TTS generation');
         }
 
+        // Compute voice settings from mood/tension/energy if provided
+        let voiceSettings = { stability: 0.5, similarity_boost: 0.75 };
+        let speedFactor = 1.0;
+        if (layer.mood) {
+          const voiceProfile = computeVoiceSettings({
+            mood: layer.mood,
+            tension: layer.tension,
+            energy: layer.energy
+          });
+          voiceSettings = {
+            stability: voiceProfile.stability,
+            similarity_boost: voiceProfile.similarity_boost
+          };
+          speedFactor = voiceProfile.speed_factor;
+          console.log(`AudioLayer ${i}: mood=${layer.mood}, voice settings:`, voiceSettings, `speed=${speedFactor}`);
+        }
+
         console.log(`Generating TTS for audioLayer ${i}: "${layer.text.substring(0, 50)}..."`);
 
         const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${layer.voice_id}`, {
@@ -3042,7 +3206,7 @@ app.post('/api/assemble', async (req, res) => {
           body: JSON.stringify({
             text: layer.text,
             model_id: layer.model_id || 'eleven_turbo_v2_5',
-            voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+            voice_settings: voiceSettings
           })
         });
 
@@ -3057,6 +3221,20 @@ app.post('/api/assemble', async (req, res) => {
         const ttsFilename = `tts_layer_${i}_${Date.now()}.mp3`;
         const ttsPath = path.join(tempDir, ttsFilename);
         fs.writeFileSync(ttsPath, Buffer.from(audioBuffer));
+
+        // Apply speed adjustment via ffmpeg if needed
+        if (speedFactor !== 1.0) {
+          try {
+            const tempAudioPath = ttsPath.replace('.mp3', '_temp.mp3');
+            const clampedSpeed = Math.max(0.5, Math.min(2.0, speedFactor));
+            execSync(`ffmpeg -y -i "${ttsPath}" -filter:a "atempo=${clampedSpeed}" "${tempAudioPath}"`, { stdio: 'pipe' });
+            fs.unlinkSync(ttsPath);
+            fs.renameSync(tempAudioPath, ttsPath);
+            console.log(`Applied speed factor ${clampedSpeed} to audioLayer ${i}`);
+          } catch (ffmpegErr) {
+            console.error(`ffmpeg atempo error for audioLayer ${i}:`, ffmpegErr.message);
+          }
+        }
 
         processedAudioLayers.push({
           ...layer,
