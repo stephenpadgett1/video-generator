@@ -29,6 +29,189 @@ function safeArr(value) {
 function safeBool(value) {
     return value === true;
 }
+const API_ENDPOINT_REGISTRY = [
+    {
+        name: "Generation",
+        description: "Endpoints for generating content (structures, prompts, images)",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/api/generate-structure",
+                description: "Generate shot structure from concept using Claude",
+                params: "concept (string), duration (number), arc? (linear-build|tension-release|wave|flat-punctuate|bookend)",
+                returns: "{ concept, duration, arc, arc_description, shots[] }"
+            },
+            {
+                method: "POST",
+                path: "/api/generate-project-from-structure",
+                description: "Generate full project with shot descriptions from concept",
+                params: "concept (string), duration (number), arc? (string), style? (string)",
+                returns: "{ project_id, concept, duration, arc, style, shots[] with descriptions }"
+            },
+            {
+                method: "POST",
+                path: "/api/generate-veo-prompt",
+                description: "Generate Veo video prompt from action description",
+                params: "description (string), durationSeconds?, aspectRatio?, style?, firstFrameImagePath?, lastFrameImagePath?",
+                returns: "{ veoPrompt, firstFrameAnalysis?, lastFrameAnalysis? }"
+            },
+            {
+                method: "POST",
+                path: "/api/generate-frame-prompts",
+                description: "Generate first/last frame image prompts from a Veo prompt",
+                params: "veoPrompt (string), shotContext? (string)",
+                returns: "{ firstFrame, lastFrame, notes }"
+            },
+            {
+                method: "POST",
+                path: "/api/breakdown-shot",
+                description: "Break a shot into takes with Veo prompts and transition strategies",
+                params: "description (string), duration (number), firstFramePrompt?, lastFramePrompt?, context?",
+                returns: "{ takes[] with duration/veoPrompt/transitionIn/transitionOut, notes }"
+            },
+            {
+                method: "POST",
+                path: "/api/generate-image",
+                description: "Generate image via Vertex AI Imagen 3",
+                params: "prompt (string), aspectRatio? (default: 9:16)",
+                returns: "{ imagePath, imageUrl }"
+            }
+        ]
+    },
+    {
+        name: "Jobs",
+        description: "Background job queue for async generation (Veo videos, Imagen images)",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/api/jobs",
+                description: "Create a background generation job",
+                params: "type (veo-generate|imagen-generate), input: { prompt, aspectRatio?, durationSeconds?, referenceImagePath?, lastFramePath? }",
+                returns: "{ jobId }"
+            },
+            {
+                method: "GET",
+                path: "/api/jobs/:id",
+                description: "Fetch job status and result",
+                returns: "{ id, type, status (pending|processing|complete|error), input, result, error, createdAt, updatedAt }"
+            },
+            {
+                method: "GET",
+                path: "/api/jobs",
+                description: "List recent jobs",
+                params: "limit? (default: 50)",
+                returns: "Array of job objects, newest first"
+            }
+        ]
+    },
+    {
+        name: "Assembly",
+        description: "FFmpeg-based video assembly with transitions, overlays, and audio",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/api/assemble",
+                description: "Assemble video from shots with transitions, overlays, and audio layers",
+                params: "shots[] (videoPath, trimStart?, trimEnd?, energy?), outputFilename?, textOverlays[]?, audioLayers[]?, musicTrack?, musicVolume?, videoVolume?",
+                returns: "{ success, filename, path, duration, shotCount }"
+            }
+        ]
+    },
+    {
+        name: "Execute",
+        description: "Full project execution pipeline",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/api/execute-project",
+                description: "Execute project: generates Veo prompts and submits jobs for all shots",
+                params: "Option 1: { project: { project_id, shots[] }, style?, aspectRatio? } | Option 2: { concept, duration, arc?, style? }",
+                returns: "{ project_id, jobs[] with shot_id/job_id/duration_target/veo_prompt }"
+            }
+        ]
+    },
+    {
+        name: "Veo",
+        description: "Direct Veo/Vertex AI video generation endpoints",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/api/veo/generate",
+                description: "Direct Veo video generation (returns operation, not background job)",
+                params: "prompt (string), aspectRatio?, durationSeconds? (snapped to 4/6/8), referenceImageBase64?, referenceImagePath?, lastFrameBase64?, lastFramePath?",
+                returns: "Google Cloud operation object with name (long-running operation ID)"
+            },
+            {
+                method: "POST",
+                path: "/api/veo/status",
+                description: "Check status of Veo long-running operation",
+                params: "operationName (string)",
+                returns: "Operation status { done, error?, response? }"
+            },
+            {
+                method: "POST",
+                path: "/api/veo/save-base64",
+                description: "Save base64-encoded video to disk",
+                params: "base64Data (string), filename? (string)",
+                returns: "{ success, filename, path, duration }"
+            },
+            {
+                method: "POST",
+                path: "/api/veo/download",
+                description: "Download Veo video from GCS URI and save locally",
+                params: "videoUri (string - gs:// or https://), filename?",
+                returns: "{ success, filename, path, duration }"
+            }
+        ]
+    },
+    {
+        name: "Frames",
+        description: "Frame extraction from videos",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/api/extract-frame",
+                description: "Extract frame from video (as base64 or save to disk)",
+                params: "videoPath (string), timestamp? (seconds, default: 0), saveToDisk? (boolean)",
+                returns: "If saveToDisk: { imagePath, imageUrl } | Else: { success, dataUrl }"
+            }
+        ]
+    },
+    {
+        name: "Analysis",
+        description: "AI-powered video analysis",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/api/gemini/analyze-video",
+                description: "Analyze video with Gemini 2.5 Flash",
+                params: "videoPath (string), originalPrompt? (string)",
+                returns: "{ description, model, raw }"
+            }
+        ]
+    }
+];
+function formatApiEndpoints(category) {
+    const categories = category && category !== "all"
+        ? API_ENDPOINT_REGISTRY.filter(c => c.name.toLowerCase() === category.toLowerCase())
+        : API_ENDPOINT_REGISTRY;
+    if (categories.length === 0) {
+        return `No endpoints found for category: ${category}`;
+    }
+    const sections = categories.map(cat => {
+        const header = `## ${cat.name}\n${cat.description}\n`;
+        const endpoints = cat.endpoints.map(ep => {
+            let entry = `### ${ep.method} ${ep.path}\n${ep.description}`;
+            if (ep.params)
+                entry += `\n**Params:** ${ep.params}`;
+            if (ep.returns)
+                entry += `\n**Returns:** ${ep.returns}`;
+            return entry;
+        }).join("\n\n");
+        return header + "\n" + endpoints;
+    });
+    return `# Video Generator API (localhost:3000)\n\n${sections.join("\n\n---\n\n")}`;
+}
 // =============================================================================
 // LOAD MANIFEST
 // =============================================================================
@@ -939,6 +1122,27 @@ server.registerTool("call_video_generator_api", {
             ],
         };
     }
+});
+// Tool: List video generator API endpoints
+server.registerTool("list_api_endpoints", {
+    title: "List Video Generator API Endpoints",
+    description: "Returns documentation of available endpoints on the video generator API at localhost:3000. Useful for discovering what operations are available for video generation, job management, and assembly.",
+    inputSchema: {
+        category: z.enum(["all", "generation", "jobs", "assembly", "execute", "veo", "frames", "analysis"])
+            .optional()
+            .default("all")
+            .describe("Filter by endpoint category (default: all)"),
+    },
+}, async (args) => {
+    const output = formatApiEndpoints(args.category);
+    return {
+        content: [
+            {
+                type: "text",
+                text: output,
+            },
+        ],
+    };
 });
 // =============================================================================
 // RESOURCES
