@@ -1459,7 +1459,7 @@ app.post('/api/generate-project-from-structure', async (req, res) => {
     return res.status(400).json({ error: 'No Claude API key configured' });
   }
 
-  const { concept, duration, arc = 'tension-release', style } = req.body;
+  const { concept, duration, arc = 'tension-release', style, include_vo } = req.body;
 
   if (!concept) {
     return res.status(400).json({ error: 'concept is required' });
@@ -1483,7 +1483,27 @@ app.post('/api/generate-project-from-structure', async (req, res) => {
     // Step 2: Generate descriptions for each shot
     console.log('Generating shot descriptions...');
 
-    const systemPrompt = `You are a visual storyteller for short-form video. Your job is to write vivid, evocative descriptions of what the viewer sees and feels in each shot.
+    const systemPrompt = include_vo
+      ? `You are a visual storyteller for short-form video. Your job is to write vivid, evocative descriptions AND decide which shots should carry voiceover.
+
+Write descriptions that are:
+- Visual and sensory (what we see, the mood, the atmosphere)
+- Appropriate to the shot's role and energy level
+- Consistent with the overall concept and style
+- NOT technical video prompts (avoid camera directions, aspect ratios, technical jargon)
+
+For voiceover decisions:
+- NOT every shot needs VO - be selective based on narrative flow
+- Good VO candidates: establish, reveal, resolve roles (moments of clarity or transition)
+- Poor VO candidates: high-energy punctuate shots, rapid transitions, pure action moments
+- VO text should be sparse, evocative, and match the tone of the visuals
+- Timing indicates when VO starts: "start" (with shot), "middle" (mid-shot), or "end" (toward end)
+
+Return a JSON array where each element is:
+{ "description": "...", "vo": { "text": "...", "timing": "start|middle|end" } }
+or for shots without VO:
+{ "description": "...", "vo": null }`
+      : `You are a visual storyteller for short-form video. Your job is to write vivid, evocative descriptions of what the viewer sees and feels in each shot.
 
 Write descriptions that are:
 - Visual and sensory (what we see, the mood, the atmosphere)
@@ -1501,7 +1521,7 @@ Return a JSON array of descriptions in the same order as the shots provided.`;
 STYLE: ${style || 'unspecified'}
 ARC: ${arc} (${structure.arc_description})
 
-Generate a description for each of these shots:
+Generate ${include_vo ? 'a description and VO decision' : 'a description'} for each of these shots:
 
 ${structure.shots.map((shot, i) => `${i + 1}. ${shot.shot_id}
    - Role: ${shot.role}
@@ -1509,7 +1529,9 @@ ${structure.shots.map((shot, i) => `${i + 1}. ${shot.shot_id}
    - Duration: ${shot.duration_target}s
    - Position: ${shot.position} (0=start, 1=end)`).join('\n\n')}
 
-Return a JSON array of description strings, one for each shot in order.`;
+${include_vo
+      ? 'Return a JSON array of objects, each with "description" (string) and "vo" (object with text/timing, or null).'
+      : 'Return a JSON array of description strings, one for each shot in order.'}`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1539,15 +1561,28 @@ Return a JSON array of description strings, one for each shot in order.`;
       return res.status(500).json({ error: 'No response from Claude for descriptions' });
     }
 
-    // Parse descriptions array
+    // Parse response array
     const cleaned = content.replace(/```json|```/g, '').trim();
-    const descriptions = JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned);
 
-    // Step 3: Merge descriptions into shots
-    const shotsWithDescriptions = structure.shots.map((shot, i) => ({
-      ...shot,
-      description: descriptions[i] || ''
-    }));
+    // Step 3: Merge descriptions (and VO if requested) into shots
+    const shotsWithDescriptions = structure.shots.map((shot, i) => {
+      const item = parsed[i];
+      if (include_vo) {
+        // New format: { description, vo }
+        return {
+          ...shot,
+          description: item?.description || '',
+          vo: item?.vo || null
+        };
+      } else {
+        // Legacy format: string description
+        return {
+          ...shot,
+          description: typeof item === 'string' ? item : (item?.description || '')
+        };
+      }
+    });
 
     // Generate project ID
     const slug = concept.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 30);
