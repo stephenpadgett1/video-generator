@@ -2047,6 +2047,140 @@ app.post('/api/generate-image', async (req, res) => {
   }
 });
 
+// ============ Lock Character ============
+
+app.post('/api/lock-character', async (req, res) => {
+  const config = loadConfig();
+
+  try {
+    const { character, style } = req.body;
+
+    // Validate input
+    if (!character || !character.id || !character.description) {
+      return res.status(400).json({
+        error: 'character object with id and description is required'
+      });
+    }
+
+    const { accessToken, projectId } = await getVeoAccessToken(config);
+
+    // Step 1: Generate neutral full-body reference image via Imagen
+    const imagenPrompt = `Full-body portrait of ${character.description}. Standing in a neutral pose, plain gray background, soft even lighting, facing camera, simple clothing.${style ? ' ' + style : ''}`;
+
+    console.log('Generating character reference image:', imagenPrompt);
+
+    const imagenResponse = await fetch(
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/imagen-3.0-generate-002:predict`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          instances: [{ prompt: imagenPrompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: '9:16'
+          }
+        })
+      }
+    );
+
+    if (!imagenResponse.ok) {
+      const errorText = await imagenResponse.text();
+      throw new Error(`Imagen API error: ${imagenResponse.status} - ${errorText}`);
+    }
+
+    const imagenData = await imagenResponse.json();
+    const base64Image = imagenData.predictions?.[0]?.bytesBase64Encoded;
+
+    if (!base64Image) {
+      throw new Error('No image generated from Imagen');
+    }
+
+    // Step 2: Save image with character-specific filename
+    const imagesDir = path.join(__dirname, 'generated-images');
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+
+    const filename = `character_${character.id}_base.png`;
+    const filepath = path.join(imagesDir, filename);
+    fs.writeFileSync(filepath, Buffer.from(base64Image, 'base64'));
+    console.log('Saved character base image to:', filepath);
+
+    // Step 3: Analyze with Gemini Flash to extract immutable visual features
+    const geminiRequestBody = {
+      contents: [{
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'image/png',
+              data: base64Image
+            }
+          },
+          {
+            text: `Analyze this reference image of a character. Extract ONLY the immutable physical features that must stay consistent across video shots.
+
+Include: approximate age, ethnicity/skin tone, gender presentation, hair color and style, body build, and ONE distinctive feature if present.
+
+Exclude: clothing, expression, pose, background, lighting, accessories.
+
+Output format: A single sentence, 15-25 words max. Example: "East Asian woman, late 20s, shoulder-length black hair, slim build, oval face."`
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 100
+      }
+    };
+
+    const geminiResponse = await fetch(
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(geminiRequestBody)
+      }
+    );
+
+    if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text();
+      throw new Error(`Gemini API error: ${geminiResponse.status} - ${errorText}`);
+    }
+
+    const geminiData = await geminiResponse.json();
+    let lockedDescription = '';
+    if (geminiData.candidates?.[0]?.content?.parts) {
+      lockedDescription = geminiData.candidates[0].content.parts
+        .map(p => p.text || '')
+        .join('')
+        .trim();
+    }
+
+    if (!lockedDescription) {
+      throw new Error('Failed to extract character description from Gemini');
+    }
+
+    console.log('Locked character description:', lockedDescription);
+
+    res.json({
+      character_id: character.id,
+      base_image_path: `/generated-images/${filename}`,
+      locked_description: lockedDescription
+    });
+  } catch (err) {
+    console.error('Lock character error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============ Gemini Video Analysis ============
 
 app.post('/api/gemini/analyze-video', async (req, res) => {

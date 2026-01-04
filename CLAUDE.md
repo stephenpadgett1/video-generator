@@ -49,6 +49,7 @@ Key API routes:
 - `/api/execute-project` - Execute a project: generates Veo prompts and submits jobs for all shots
 - `/api/extract-frame` - Frame extraction for reference shots (supports `saveToDisk` option to save to `generated-images/`)
 - `/api/generate-image` - Generate images via Vertex AI Imagen 3 (saves to `generated-images/`)
+- `/api/lock-character` - Generate reference image and extract immutable visual features for character consistency
 - `/api/generate-frame-prompts` - Generate first/last frame image prompts from a Veo prompt
 - `/api/breakdown-shot` - Break a shot into takes with Veo prompts and transition strategies
 - `/api/generate-veo-prompt` - Generate Veo prompts from action descriptions with optional frame image analysis
@@ -100,6 +101,26 @@ Characters are automatically extracted from concepts. Each character has:
 
 Only people and anthropomorphized entities with agency are extracted as characters (not objects or locations).
 Each shot includes a `characters` array listing which character IDs appear in that shot.
+
+**Character Locking (`/api/lock-character`):**
+Generates a neutral reference image for a character and extracts immutable visual features for consistent prompts across shots.
+```json
+POST /api/lock-character {
+  "character": { "id": "woman_1", "description": "a young professional woman" },
+  "style": "cinematic, natural lighting"  // optional
+}
+// Response
+{
+  "character_id": "woman_1",
+  "base_image_path": "/generated-images/character_woman_1_base.png",
+  "locked_description": "East Asian woman, late 20s, shoulder-length black hair, slim build, oval face."
+}
+```
+- Generates a neutral full-body portrait via Imagen (9:16, plain gray background, neutral pose)
+- Analyzes with Gemini Flash to extract ONLY immutable physical features
+- `locked_description` is 1-1.5 sentences max, suitable for embedding in Veo prompts
+- Focuses on: age, ethnicity/skin tone, gender, hair color/style, build, and one distinctive feature
+- Excludes: clothing, expression, pose, accessories (things that change between shots)
 
 **Video Assembly (`/api/assemble`):**
 ```json
