@@ -1144,6 +1144,68 @@ async function analyzeImageWithGemini(imagePath, accessToken, projectId) {
   return text;
 }
 
+// Reusable function to generate Veo prompts from descriptions
+async function generateVeoPromptInternal(description, durationSeconds, style, claudeKey, options = {}) {
+  const {
+    aspectRatio,
+    firstFrameDescription,
+    lastFrameDescription,
+    previousTakeDescription,
+    additionalContext
+  } = options;
+
+  const systemPrompt = `You are a cinematographer writing prompts for Veo, an AI video generator.
+
+Given the action description and optional frame context, write a detailed video generation prompt that:
+- Describes the motion/action clearly
+- Specifies camera movement and angle
+- Includes lighting and visual style
+- If a starting frame is described, ensure the video begins from that visual state
+- If an ending frame is described, guide the action toward that visual state
+- Maintains consistency with any previous take context
+
+Output only the prompt text, no JSON or explanation.`;
+
+  let userMessage = `ACTION: ${description}`;
+  if (durationSeconds) userMessage += `\nDURATION: ${durationSeconds} seconds`;
+  if (aspectRatio) userMessage += `\nASPECT RATIO: ${aspectRatio}`;
+  if (style) userMessage += `\nSTYLE: ${style}`;
+  if (firstFrameDescription) userMessage += `\nSTARTING FRAME: ${firstFrameDescription}`;
+  if (lastFrameDescription) userMessage += `\nENDING FRAME: ${lastFrameDescription}`;
+  if (previousTakeDescription) userMessage += `\nPREVIOUS TAKE: ${previousTakeDescription}`;
+  if (additionalContext) userMessage += `\nCONTEXT: ${additionalContext}`;
+  userMessage += '\n\nWrite a Veo prompt for this take.';
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': claudeKey,
+      'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }]
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Claude API error: ${error}`);
+  }
+
+  const data = await response.json();
+  const veoPrompt = data.content?.[0]?.text;
+
+  if (!veoPrompt) {
+    throw new Error('No response from Claude');
+  }
+
+  return veoPrompt;
+}
+
 app.post('/api/generate-veo-prompt', async (req, res) => {
   const config = loadConfig();
 
@@ -1510,6 +1572,195 @@ Return a JSON array of description strings, one for each shot in order.`;
   }
 });
 
+// Execute a project - generates Veo prompts and submits jobs for all shots
+app.post('/api/execute-project', async (req, res) => {
+  const config = loadConfig();
+
+  if (!config.claudeKey) {
+    return res.status(400).json({ error: 'No Claude API key configured' });
+  }
+
+  if (!config.veoServiceAccountPath) {
+    return res.status(400).json({ error: 'No Veo service account configured' });
+  }
+
+  const { project, concept, duration, arc = 'tension-release', style, aspectRatio = '9:16' } = req.body;
+
+  // Validate input - need either project or concept
+  if (!project && !concept) {
+    return res.status(400).json({ error: 'Either project or concept is required' });
+  }
+
+  try {
+    let projectData = project;
+
+    // If no project provided, generate one from concept/duration/arc
+    if (!projectData && concept) {
+      if (!duration || typeof duration !== 'number' || duration <= 0) {
+        return res.status(400).json({ error: 'duration is required when using concept shorthand' });
+      }
+
+      if (!ARC_TYPES[arc]) {
+        return res.status(400).json({
+          error: `Invalid arc type. Must be one of: ${Object.keys(ARC_TYPES).join(', ')}`
+        });
+      }
+
+      console.log('Generating project from concept...');
+
+      // Generate structure
+      const structure = await generateStructureInternal(concept, duration, arc, config.claudeKey);
+
+      // Generate descriptions for each shot
+      const systemPrompt = `You are a visual storyteller for short-form video. Your job is to write vivid, evocative descriptions of what the viewer sees and feels in each shot.
+
+Write descriptions that are:
+- Visual and sensory (what we see, the mood, the atmosphere)
+- Appropriate to the shot's role and energy level
+- Consistent with the overall concept and style
+- NOT technical video prompts (avoid camera directions, aspect ratios, technical jargon)
+
+Return a JSON array of descriptions in the same order as the shots provided.`;
+
+      let userMessage = `CONCEPT: ${concept}
+STYLE: ${style || 'unspecified'}
+ARC: ${arc} (${structure.arc_description})
+
+Generate a description for each of these shots:
+
+${structure.shots.map((shot, i) => `${i + 1}. ${shot.shot_id}
+   - Role: ${shot.role}
+   - Energy: ${shot.energy}
+   - Duration: ${shot.duration_target}s
+   - Position: ${shot.position} (0=start, 1=end)`).join('\n\n')}
+
+Return a JSON array of description strings, one for each shot in order.`;
+
+      const descResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': config.claudeKey,
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }]
+        })
+      });
+
+      if (!descResponse.ok) {
+        const error = await descResponse.text();
+        throw new Error(`Claude API error generating descriptions: ${error}`);
+      }
+
+      const descData = await descResponse.json();
+      const content = descData.content?.[0]?.text;
+
+      if (!content) {
+        throw new Error('No response from Claude for descriptions');
+      }
+
+      const cleaned = content.replace(/```json|```/g, '').trim();
+      const descriptions = JSON.parse(cleaned);
+
+      const shotsWithDescriptions = structure.shots.map((shot, i) => ({
+        ...shot,
+        description: descriptions[i] || ''
+      }));
+
+      const slug = concept.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 30);
+      const projectId = `${slug}_${Date.now()}`;
+
+      projectData = {
+        project_id: projectId,
+        concept: structure.concept,
+        duration: structure.duration,
+        arc: structure.arc,
+        arc_description: structure.arc_description,
+        style: style || null,
+        shots: shotsWithDescriptions
+      };
+
+      console.log('Generated project from concept:', projectData.project_id);
+    }
+
+    // Validate project has shots
+    if (!projectData.shots || !Array.isArray(projectData.shots) || projectData.shots.length === 0) {
+      return res.status(400).json({ error: 'Project must have at least one shot' });
+    }
+
+    // For each shot, generate Veo prompt and submit job
+    const jobs = [];
+    const projectStyle = projectData.style || style;
+
+    for (const shot of projectData.shots) {
+      if (!shot.description) {
+        console.warn(`Shot ${shot.shot_id} has no description, skipping`);
+        continue;
+      }
+
+      console.log(`Processing shot ${shot.shot_id}...`);
+
+      // Generate Veo prompt from description
+      const veoPrompt = await generateVeoPromptInternal(
+        shot.description,
+        shot.duration_target,
+        projectStyle,
+        config.claudeKey,
+        { aspectRatio }
+      );
+
+      console.log(`Generated Veo prompt for ${shot.shot_id}:`, veoPrompt.substring(0, 80) + '...');
+
+      // Create job for this shot
+      const job = {
+        id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        type: 'veo-generate',
+        status: 'pending',
+        input: {
+          prompt: veoPrompt,
+          aspectRatio,
+          durationSeconds: shot.duration_target
+        },
+        result: null,
+        error: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      const allJobs = loadJobs();
+      allJobs.unshift(job);
+      saveJobs(allJobs);
+
+      // Start processing
+      processVeoJob(job.id, job.input);
+
+      jobs.push({
+        shot_id: shot.shot_id,
+        job_id: job.id,
+        duration_target: shot.duration_target,
+        veo_prompt: veoPrompt
+      });
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log(`Execute project complete: ${jobs.length} jobs created`);
+
+    res.json({
+      project_id: projectData.project_id,
+      jobs
+    });
+  } catch (err) {
+    console.error('Execute project error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/generate-image', async (req, res) => {
   const config = loadConfig();
 
@@ -1681,18 +1932,23 @@ Provide:
 // ============ Video Assembly ============
 
 app.post('/api/assemble', async (req, res) => {
-  const { shots, outputFilename, textOverlays = [], musicTrack, musicVolume = 0.3, videoVolume = 1.0 } = req.body;
+  const { shots, outputFilename, textOverlays = [], audioLayers = [], videoVolume = 1.0,
+          musicTrack, musicVolume = 0.3 } = req.body;
 
-  // shots should be array of: { videoPath, voPath?, trimStart?, trimEnd?, energy? }
+  // shots should be array of: { videoPath, trimStart?, trimEnd?, energy? }
   // Energy-based transitions when energy values are provided:
   //   - Drop >= 0.4: insert 0.5s black before lower-energy shot
   //   - Rise >= 0.4: hard cut with 0.1s trimmed from outgoing shot
   //   - Change < 0.2: 0.25s crossfade dissolve
   // textOverlays (optional): array of { text, startTime, duration, position? }
   //   - position: "top", "center", or "bottom" (default "bottom")
-  // musicTrack (optional): path to audio file to mix under video
-  // musicVolume (optional): 0.0-1.0, default 0.3
+  // audioLayers (optional): array of { type, path, volume, startTime }
+  //   - type: "music", "vo", "sfx", "ambient" (label only, all mixed same way)
+  //   - path: path to audio file
+  //   - volume: 0.0-1.0
+  //   - startTime: seconds from start of assembled video
   // videoVolume (optional): 0.0-1.0, default 1.0 - controls video's native audio level
+  // musicTrack/musicVolume (deprecated): backward compat, converted to audioLayer
   
   if (!shots || shots.length === 0) {
     return res.status(400).json({ error: 'No shots provided' });
@@ -1713,7 +1969,14 @@ app.post('/api/assemble', async (req, res) => {
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
-    
+
+    // Build unified audio layers (with backward compatibility for musicTrack)
+    const allAudioLayers = [...audioLayers];
+    if (musicTrack && audioLayers.length === 0) {
+      console.log('Converting legacy musicTrack to audioLayer');
+      allAudioLayers.push({ type: 'music', path: musicTrack, volume: musicVolume, startTime: 0 });
+    }
+
     // Create concat file for ffmpeg
     const concatFilePath = path.join(tempDir, 'concat.txt');
     const concatLines = [];
@@ -1774,64 +2037,23 @@ app.post('/api/assemble', async (req, res) => {
 
       const normalizedPath = path.join(tempDir, `shot_${i}.mp4`);
 
-      // Check if we have a VO to mix in
-      let hasVo = false;
-      let voFullPath = '';
-      if (shot.voPath) {
-        voFullPath = path.join(__dirname, 'data', shot.voPath.replace(/^\//, ''));
-        hasVo = fs.existsSync(voFullPath);
-        if (!hasVo) {
-          console.log(`VO not found, skipping: ${shot.voPath}`);
-        }
+      // Normalize the video (audio layers are mixed post-concatenation)
+      let ffmpegCmd = `ffmpeg -y -i "${videoFullPath}"`;
+
+      if (shot.trimStart) {
+        ffmpegCmd += ` -ss ${shot.trimStart}`;
+      }
+      if (shot.trimEnd) {
+        ffmpegCmd += ` -to ${shot.trimEnd}`;
       }
 
-      let ffmpegCmd;
+      ffmpegCmd += ` -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"`;
+      ffmpegCmd += ` -c:v libx264 -preset fast -crf 23`;
+      ffmpegCmd += ` -c:a aac -ar 44100 -ac 2`;
+      ffmpegCmd += ` -pix_fmt yuv420p`;
+      ffmpegCmd += ` "${normalizedPath}"`;
 
-      if (hasVo) {
-        // Mix video with VO audio
-        // Use the video's audio (if any) at lower volume and overlay VO
-        ffmpegCmd = `ffmpeg -y -i "${videoFullPath}" -i "${voFullPath}"`;
-
-        // Add trim if specified
-        if (shot.trimStart) {
-          ffmpegCmd += ` -ss ${shot.trimStart}`;
-        }
-        if (shot.trimEnd) {
-          ffmpegCmd += ` -to ${shot.trimEnd}`;
-        }
-
-        // Video filter: normalize to 1080x1920, 30fps
-        ffmpegCmd += ` -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"`;
-
-        // Audio filter: mix original audio (reduced volume) with VO
-        // [0:a] is video's audio, [1:a] is VO
-        // Reduce video audio to 20%, keep VO at 100%
-        ffmpegCmd += ` -filter_complex "[0:a]volume=0.2[a0];[1:a]volume=1.0[a1];[a0][a1]amix=inputs=2:duration=longest[aout]" -map 0:v -map "[aout]"`;
-
-        ffmpegCmd += ` -c:v libx264 -preset fast -crf 23`;
-        ffmpegCmd += ` -c:a aac -ar 44100 -ac 2`;
-        ffmpegCmd += ` -pix_fmt yuv420p`;
-        ffmpegCmd += ` -shortest`;  // End when shortest stream ends
-        ffmpegCmd += ` "${normalizedPath}"`;
-      } else {
-        // No VO - just normalize the video
-        ffmpegCmd = `ffmpeg -y -i "${videoFullPath}"`;
-
-        if (shot.trimStart) {
-          ffmpegCmd += ` -ss ${shot.trimStart}`;
-        }
-        if (shot.trimEnd) {
-          ffmpegCmd += ` -to ${shot.trimEnd}`;
-        }
-
-        ffmpegCmd += ` -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"`;
-        ffmpegCmd += ` -c:v libx264 -preset fast -crf 23`;
-        ffmpegCmd += ` -c:a aac -ar 44100 -ac 2`;
-        ffmpegCmd += ` -pix_fmt yuv420p`;
-        ffmpegCmd += ` "${normalizedPath}"`;
-      }
-
-      console.log(`Processing shot ${i}${hasVo ? ' (with VO)' : ''}:`, ffmpegCmd);
+      console.log(`Processing shot ${i}:`, ffmpegCmd);
       execSync(ffmpegCmd, { stdio: 'pipe' });
       normalizedPaths.push(normalizedPath);
     }
@@ -1885,9 +2107,9 @@ app.post('/api/assemble', async (req, res) => {
 
     // Determine post-processing steps needed
     const hasOverlays = textOverlays && textOverlays.length > 0;
-    const hasMusic = musicTrack && typeof musicTrack === 'string';
+    const hasAudioLayers = allAudioLayers.length > 0;
     const hasVolumeAdjust = videoVolume !== 1.0;
-    const needsPostProcessing = hasOverlays || hasMusic || hasVolumeAdjust;
+    const needsPostProcessing = hasOverlays || hasAudioLayers || hasVolumeAdjust;
 
     // Determine output paths for each stage
     let currentOutput = needsPostProcessing ? path.join(tempDir, 'concat_output.mp4') : outputPath;
@@ -1924,45 +2146,85 @@ app.post('/api/assemble', async (req, res) => {
       });
 
       const filterChain = drawtextFilters.join(',');
-      const overlayOutput = hasMusic ? path.join(tempDir, 'overlay_output.mp4') : outputPath;
+      const overlayOutput = (hasAudioLayers || hasVolumeAdjust) ? path.join(tempDir, 'overlay_output.mp4') : outputPath;
       const overlayCmd = `ffmpeg -y -i "${currentOutput}" -vf "${filterChain}" -c:v libx264 -preset fast -crf 23 -c:a copy "${overlayOutput}"`;
       console.log('Applying text overlays:', overlayCmd);
       execSync(overlayCmd, { stdio: 'pipe' });
       currentOutput = overlayOutput;
     }
 
-    // Mix music track if present, or adjust video volume if specified
-    if (hasMusic) {
-      const musicFullPath = path.join(__dirname, 'data', musicTrack.replace(/^\//, ''));
+    // Mix audio layers if present, or adjust video volume if specified
+    if (hasAudioLayers || hasVolumeAdjust) {
+      // Get video duration for fade timing
+      const videoDuration = getClipDuration(currentOutput);
 
-      if (!fs.existsSync(musicFullPath)) {
-        console.log(`Music track not found: ${musicTrack}, skipping music mix`);
-      } else {
-        console.log(`Mixing music track: ${musicTrack} at volume ${musicVolume}, video volume: ${videoVolume}`);
+      // Validate and collect audio layer paths
+      const validLayers = [];
+      for (const layer of allAudioLayers) {
+        const layerPath = path.join(__dirname, 'data', layer.path.replace(/^\//, ''));
+        if (fs.existsSync(layerPath)) {
+          validLayers.push({ ...layer, fullPath: layerPath });
+        } else {
+          console.log(`Audio layer not found, skipping: ${layer.path}`);
+        }
+      }
 
-        // Get video duration for fade out timing
-        const videoDuration = getClipDuration(currentOutput);
-        const fadeStart = Math.max(0, videoDuration - 1);
+      if (validLayers.length > 0) {
+        console.log(`Mixing ${validLayers.length} audio layer(s) with video (videoVolume: ${videoVolume})...`);
 
-        // Mix music under video audio
-        // [0:a] = video audio with volume adjustment
-        // [1:a] = music with volume adjustment and fade out
-        // amix combines them, duration=first trims music to video length
-        const musicCmd = `ffmpeg -y -i "${currentOutput}" -i "${musicFullPath}" -filter_complex "[0:a]volume=${videoVolume}[vid];[1:a]volume=${musicVolume},afade=t=out:st=${fadeStart}:d=1[music];[vid][music]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac "${outputPath}"`;
-        console.log('Mixing music:', musicCmd);
-        execSync(musicCmd, { stdio: 'pipe' });
+        // Build ffmpeg command with all audio inputs
+        let audioCmd = `ffmpeg -y -i "${currentOutput}"`;
+        for (const layer of validLayers) {
+          audioCmd += ` -i "${layer.fullPath}"`;
+        }
+
+        // Build filter_complex
+        const filterParts = [];
+        const mixInputs = [];
+
+        // Video audio with volume adjustment
+        filterParts.push(`[0:a]volume=${videoVolume}[vid]`);
+        mixInputs.push('[vid]');
+
+        // Each audio layer with delay, volume, and optional fade
+        validLayers.forEach((layer, idx) => {
+          const inputIdx = idx + 1;
+          const delayMs = Math.round((layer.startTime || 0) * 1000);
+          const volume = layer.volume ?? 1.0;
+          const label = `[a${inputIdx}]`;
+
+          let layerFilter = `[${inputIdx}:a]adelay=${delayMs}|${delayMs},volume=${volume}`;
+
+          // Add fade-out for music type
+          if (layer.type === 'music') {
+            const fadeStart = Math.max(0, videoDuration - 1);
+            layerFilter += `,afade=t=out:st=${fadeStart}:d=1`;
+          }
+
+          layerFilter += label;
+          filterParts.push(layerFilter);
+          mixInputs.push(label);
+
+          console.log(`  Layer ${inputIdx}: ${layer.type} "${layer.path}" at ${layer.startTime || 0}s, volume ${volume}`);
+        });
+
+        // Mix all inputs together
+        const mixCount = mixInputs.length;
+        filterParts.push(`${mixInputs.join('')}amix=inputs=${mixCount}:duration=first:dropout_transition=0[aout]`);
+
+        const filterComplex = filterParts.join(';');
+        audioCmd += ` -filter_complex "${filterComplex}" -map 0:v -map "[aout]" -c:v copy -c:a aac "${outputPath}"`;
+
+        console.log('Mixing audio layers:', audioCmd);
+        execSync(audioCmd, { stdio: 'pipe' });
+        currentOutput = outputPath;
+      } else if (hasVolumeAdjust) {
+        // No valid audio layers but video volume adjustment requested
+        console.log(`Adjusting video volume to ${videoVolume}`);
+        const volCmd = `ffmpeg -y -i "${currentOutput}" -af "volume=${videoVolume}" -c:v copy -c:a aac "${outputPath}"`;
+        execSync(volCmd, { stdio: 'pipe' });
         currentOutput = outputPath;
       }
-    } else if (videoVolume !== 1.0) {
-      // No music but video volume adjustment requested
-      console.log(`Adjusting video volume to ${videoVolume}`);
-      const volOutput = path.join(tempDir, 'volume_adjusted.mp4');
-      const volCmd = `ffmpeg -y -i "${currentOutput}" -af "volume=${videoVolume}" -c:v copy -c:a aac "${volOutput}"`;
-      execSync(volCmd, { stdio: 'pipe' });
-
-      // Move to final output
-      fs.renameSync(volOutput, outputPath);
-      currentOutput = outputPath;
     }
 
     // Get duration of final video

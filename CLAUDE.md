@@ -44,6 +44,7 @@ Key API routes:
 - `/api/assemble` - ffmpeg-based video assembly with VO mixing, transitions, overlays, and music
 - `/api/generate-structure` - Generate shot structure from concept using Claude
 - `/api/generate-project-from-structure` - Generate full project with shot descriptions from concept
+- `/api/execute-project` - Execute a project: generates Veo prompts and submits jobs for all shots
 - `/api/extract-frame` - Frame extraction for reference shots (supports `saveToDisk` option to save to `generated-images/`)
 - `/api/generate-image` - Generate images via Vertex AI Imagen 3 (saves to `generated-images/`)
 - `/api/generate-frame-prompts` - Generate first/last frame image prompts from a Veo prompt
@@ -84,6 +85,33 @@ POST /api/assemble {
 - **textOverlays**: Burn text onto video (position: "top", "center", "bottom")
 - **musicTrack/musicVolume**: Mix background music under video (fades out in last 1s)
 - **videoVolume**: Control video's native audio level (0=mute, 1=full)
+
+**Project Execution (`/api/execute-project`):**
+Generates Veo prompts for all shots and submits them to the job queue, returning immediately with job IDs.
+```json
+// Option 1: Full project
+POST /api/execute-project {
+  "project": { "project_id": "...", "shots": [{ "shot_id": "shot_1", "description": "...", "duration_target": 4 }] },
+  "style": "cinematic, bold colors",
+  "aspectRatio": "9:16"
+}
+
+// Option 2: Shorthand (generates project first)
+POST /api/execute-project {
+  "concept": "a red balloon escaping into the sky",
+  "duration": 12,
+  "arc": "linear-build",
+  "style": "cinematic, bold colors"
+}
+
+// Response
+{
+  "project_id": "...",
+  "jobs": [
+    { "shot_id": "shot_1", "job_id": "job_xxx", "duration_target": 4, "veo_prompt": "..." }
+  ]
+}
+```
 
 Generated assets go to `data/` subdirectories: `audio/`, `video/`, `exports/`, `frames/`. Generated images go to `generated-images/`.
 
