@@ -1681,7 +1681,7 @@ Provide:
 // ============ Video Assembly ============
 
 app.post('/api/assemble', async (req, res) => {
-  const { shots, outputFilename, textOverlays = [] } = req.body;
+  const { shots, outputFilename, textOverlays = [], musicTrack, musicVolume = 0.3 } = req.body;
 
   // shots should be array of: { videoPath, voPath?, trimStart?, trimEnd?, energy? }
   // Energy-based transitions when energy values are provided:
@@ -1690,6 +1690,8 @@ app.post('/api/assemble', async (req, res) => {
   //   - Change < 0.2: 0.25s crossfade dissolve
   // textOverlays (optional): array of { text, startTime, duration, position? }
   //   - position: "top", "center", or "bottom" (default "bottom")
+  // musicTrack (optional): path to audio file to mix under video
+  // musicVolume (optional): 0.0-1.0, default 0.3
   
   if (!shots || shots.length === 0) {
     return res.status(400).json({ error: 'No shots provided' });
@@ -1880,12 +1882,16 @@ app.post('/api/assemble', async (req, res) => {
     // Write concat file
     fs.writeFileSync(concatFilePath, concatLines.join('\n'));
 
-    // Determine if we need text overlays
+    // Determine post-processing steps needed
     const hasOverlays = textOverlays && textOverlays.length > 0;
-    const concatOutputPath = hasOverlays ? path.join(tempDir, 'concat_output.mp4') : outputPath;
+    const hasMusic = musicTrack && typeof musicTrack === 'string';
+    const needsPostProcessing = hasOverlays || hasMusic;
+
+    // Determine output paths for each stage
+    let currentOutput = needsPostProcessing ? path.join(tempDir, 'concat_output.mp4') : outputPath;
 
     // Concatenate all clips
-    const concatCmd = `ffmpeg -y -f concat -safe 0 -i "${concatFilePath}" -c copy "${concatOutputPath}"`;
+    const concatCmd = `ffmpeg -y -f concat -safe 0 -i "${concatFilePath}" -c copy "${currentOutput}"`;
     console.log('Concatenating:', concatCmd);
     execSync(concatCmd, { stdio: 'pipe' });
 
@@ -1916,9 +1922,35 @@ app.post('/api/assemble', async (req, res) => {
       });
 
       const filterChain = drawtextFilters.join(',');
-      const overlayCmd = `ffmpeg -y -i "${concatOutputPath}" -vf "${filterChain}" -c:v libx264 -preset fast -crf 23 -c:a copy "${outputPath}"`;
+      const overlayOutput = hasMusic ? path.join(tempDir, 'overlay_output.mp4') : outputPath;
+      const overlayCmd = `ffmpeg -y -i "${currentOutput}" -vf "${filterChain}" -c:v libx264 -preset fast -crf 23 -c:a copy "${overlayOutput}"`;
       console.log('Applying text overlays:', overlayCmd);
       execSync(overlayCmd, { stdio: 'pipe' });
+      currentOutput = overlayOutput;
+    }
+
+    // Mix music track if present
+    if (hasMusic) {
+      const musicFullPath = path.join(__dirname, 'data', musicTrack.replace(/^\//, ''));
+
+      if (!fs.existsSync(musicFullPath)) {
+        console.log(`Music track not found: ${musicTrack}, skipping music mix`);
+      } else {
+        console.log(`Mixing music track: ${musicTrack} at volume ${musicVolume}`);
+
+        // Get video duration for fade out timing
+        const videoDuration = getClipDuration(currentOutput);
+        const fadeStart = Math.max(0, videoDuration - 1);
+
+        // Mix music under video audio
+        // [1:a] = music with volume adjustment and fade out
+        // [0:a] = video audio
+        // amix combines them, duration=first trims music to video length
+        const musicCmd = `ffmpeg -y -i "${currentOutput}" -i "${musicFullPath}" -filter_complex "[1:a]volume=${musicVolume},afade=t=out:st=${fadeStart}:d=1[music];[0:a][music]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac "${outputPath}"`;
+        console.log('Mixing music:', musicCmd);
+        execSync(musicCmd, { stdio: 'pipe' });
+        currentOutput = outputPath;
+      }
     }
 
     // Get duration of final video
