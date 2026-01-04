@@ -336,10 +336,62 @@ async function pollVeoJob(jobId, operationName) {
         if (data.error) {
           updateJob(jobId, { status: 'error', error: data.error.message });
         } else {
-          const videoUri = data.response?.videos?.[0]?.uri;
+          const video = data.response?.videos?.[0];
+          const base64Data = video?.bytesBase64Encoded;
+          const videoUri = video?.uri;
 
-          if (videoUri) {
-            // Download and save the video file locally
+          if (base64Data) {
+            // Save base64 video data directly
+            try {
+              console.log(`Veo job ${jobId} generation complete, received base64 video data`);
+
+              const buffer = Buffer.from(base64Data, 'base64');
+              const fileSizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
+              console.log(`Veo job ${jobId} decoded base64 data: ${fileSizeMB} MB`);
+
+              // Save to video directory
+              const videoDir = path.join(__dirname, 'data', 'video');
+              if (!fs.existsSync(videoDir)) {
+                console.log(`Veo job ${jobId} creating video directory:`, videoDir);
+                fs.mkdirSync(videoDir, { recursive: true });
+              }
+
+              const filename = `veo_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.mp4`;
+              const filepath = path.join(videoDir, filename);
+
+              console.log(`Veo job ${jobId} writing video to:`, filepath);
+              fs.writeFileSync(filepath, buffer);
+              console.log(`Veo job ${jobId} file written successfully`);
+
+              // Get duration using ffprobe
+              console.log(`Veo job ${jobId} detecting video duration with ffprobe...`);
+              const duration = getVideoDuration(filepath);
+
+              if (duration) {
+                console.log(`Veo job ${jobId} video duration: ${duration}s`);
+              } else {
+                console.warn(`Veo job ${jobId} could not detect video duration`);
+              }
+
+              console.log(`Veo job ${jobId} complete: ${filename} (${fileSizeMB} MB, ${duration || 'unknown'}s)`);
+
+              updateJob(jobId, {
+                status: 'complete',
+                result: {
+                  operationName,
+                  filename,
+                  path: `/video/${filename}`,
+                  duration,
+                  response: data.response
+                }
+              });
+            } catch (saveErr) {
+              console.error(`Veo job ${jobId} save error:`, saveErr.message);
+              console.error(`Veo job ${jobId} save stack:`, saveErr.stack);
+              updateJob(jobId, { status: 'error', error: `Save error: ${saveErr.message}` });
+            }
+          } else if (videoUri) {
+            // Download and save the video file from URI
             try {
               console.log(`Veo job ${jobId} generation complete, video URI:`, videoUri);
 
@@ -414,10 +466,10 @@ async function pollVeoJob(jobId, operationName) {
               updateJob(jobId, { status: 'error', error: `Download error: ${downloadErr.message}` });
             }
           } else {
-            console.error(`Veo job ${jobId} completed but no video URI in response:`, JSON.stringify(data.response, null, 2));
+            console.error(`Veo job ${jobId} completed but no video data in response:`, JSON.stringify(data.response, null, 2));
             updateJob(jobId, {
               status: 'error',
-              error: 'No video URI in response'
+              error: 'No video data in response'
             });
           }
         }
