@@ -1303,13 +1303,20 @@ async function generateVeoPromptInternal(description, durationSeconds, style, cl
 
   const systemPrompt = `You are a cinematographer writing prompts for Veo, an AI video generator.
 
-Given the action description and optional frame context, write a detailed video generation prompt that:
+Given the action description and context, write a detailed video generation prompt that:
 - Describes the motion/action clearly
 - Specifies camera movement and angle
 - Includes lighting and visual style
 - If a starting frame is described, ensure the video begins from that visual state
 - If an ending frame is described, guide the action toward that visual state
 - Maintains consistency with any previous take context
+
+CRITICAL - CHARACTER CONSISTENCY:
+If a CHARACTER description is provided in CONTEXT, you MUST:
+1. Start your prompt with the COMPLETE character description in the first sentence
+2. Include ALL details verbatim: physical features, specific clothing colors/items, expression
+3. Do NOT paraphrase or omit any character details - copy them exactly
+4. Example: If context says "East Asian woman, 30s, shoulder-length black hair, white blouse, navy pants" your prompt MUST begin with those exact details
 
 Output only the prompt text, no JSON or explanation.`;
 
@@ -2214,13 +2221,17 @@ app.post('/api/lock-character', async (req, res) => {
             }
           },
           {
-            text: `Analyze this reference image of a character. Extract ONLY the immutable physical features that must stay consistent across video shots.
+            text: `Analyze this reference image of a character for video generation consistency. Extract ALL visual features that must stay identical across multiple video shots.
 
-Include: approximate age, ethnicity/skin tone, gender presentation, hair color and style, body build, and ONE distinctive feature if present.
+MUST INCLUDE:
+- Physical: age, ethnicity/skin tone, gender, hair color/style/length, body build, facial features
+- Clothing: exact garments, colors, patterns, fit (e.g., "white button-up blouse, dark navy pants")
+- Appearance state: expression, pose, demeanor if distinctive
 
-Exclude: clothing, expression, pose, background, lighting, accessories.
+EXCLUDE: background, lighting, camera angle
 
-Output format: A single sentence, 15-25 words max. Example: "East Asian woman, late 20s, shoulder-length black hair, slim build, oval face."`
+Output format: A detailed sentence, 30-50 words. Be SPECIFIC about colors and clothing.
+Example: "East Asian woman, late 20s, shoulder-length straight black hair, slim build, wearing a crisp white button-up blouse tucked into high-waisted dark navy trousers, calm neutral expression, standing upright with relaxed posture."`
           }
         ]
       }],
@@ -2276,18 +2287,17 @@ Output format: A single sentence, 15-25 words max. Example: "East Asian woman, l
               }
             },
             {
-              text: `Describe this person's physical appearance in exactly one sentence with 15-25 words.
+              text: `Describe this person's complete visual appearance for video consistency in 30-50 words.
 
 You MUST include ALL of these details:
-1. Ethnicity/skin tone
-2. Approximate age (e.g., "early 30s", "mid 40s")
-3. Gender presentation
-4. Hair color and style
-5. Body build (slim, athletic, stocky, etc.)
+1. Ethnicity/skin tone and approximate age
+2. Gender presentation
+3. Hair color, style, and length
+4. Body build
+5. CLOTHING: specific garments with colors (e.g., "white blouse, dark pants")
+6. Expression/demeanor if notable
 
-Do NOT mention clothing, pose, background, or expression.
-
-Example format: "Caucasian man, mid-30s, short brown hair with slight wave, athletic build, square jaw, light stubble."`
+Example: "East Asian woman, early 30s, shoulder-length black hair, slim build, wearing white button-up blouse and dark navy trousers, calm composed expression."`
             }
           ]
         }],
