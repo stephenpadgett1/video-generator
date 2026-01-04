@@ -132,6 +132,22 @@ audioLayers support `path` for existing files OR `text` + `voice_id` for inline 
 
 When outputting videos during test sessions, use text annotations to notate anything to pay attention to or verify at specific timestamps. Annotations should be context-dependent based on what is being tested (e.g., transition timing, visual consistency, energy arc, character appearance).
 
+## Creative Techniques
+
+Character and environment locking enable several creative effects:
+
+- **Time-shift**: Lock character, vary atmosphere/lighting across shots (dawn → noon → dusk → night)
+- **Style-shift**: Lock character action, change visual style per shot (noir → anime → watercolor → cyberpunk)
+- **Mixed-reality**: Style the character differently from the environment (anime character in photorealistic world)
+
+## Known Veo Limitations
+
+- **VFX-heavy prompts fail**: Neon wireframe, hologram, glowing effects often return no video
+- **Character consistency**: Locking helps but poses/angles still vary between shots
+- **Complex physics**: Liquid spills, precise object interactions are hit-or-miss
+- **Style isolation**: Requesting "character in X style, environment in Y style" partially works
+
 ## Development Notes
 
 - **Model selection**: Don't waste time trying to optimize prompts for smaller/cheaper models. If a model isn't producing good results, upgrade to a more capable model immediately.
+- **Frame rate matching**: When concatenating videos, ensure matching frame rates (title cards should match main video fps)
