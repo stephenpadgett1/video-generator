@@ -41,7 +41,9 @@ Key API routes:
 - `/api/elevenlabs/*` - TTS proxy (voices list, generation)
 - `/api/veo/*` - Vertex AI video generation proxy (Veo 3.1)
 - `/api/gemini/analyze-video` - Video analysis via Gemini 2.5 Flash
-- `/api/assemble` - ffmpeg-based video assembly with VO mixing
+- `/api/assemble` - ffmpeg-based video assembly with VO mixing, transitions, overlays, and music
+- `/api/generate-structure` - Generate shot structure from concept using Claude
+- `/api/generate-project-from-structure` - Generate full project with shot descriptions from concept
 - `/api/extract-frame` - Frame extraction for reference shots (supports `saveToDisk` option to save to `generated-images/`)
 - `/api/generate-image` - Generate images via Vertex AI Imagen 3 (saves to `generated-images/`)
 - `/api/generate-frame-prompts` - Generate first/last frame image prompts from a Veo prompt
@@ -59,6 +61,29 @@ GET /api/jobs → array of recent jobs
 Completed veo-generate jobs have result: { operationName, filename, path, duration }
 Completed imagen-generate jobs have result: { imagePath, imageUrl }
 ```
+
+**Video Assembly (`/api/assemble`):**
+```json
+POST /api/assemble {
+  "shots": [
+    { "videoPath": "/video/clip.mp4", "voPath?": "/audio/vo.mp3", "trimStart?": 0, "trimEnd?": 5, "energy?": 0.5 }
+  ],
+  "outputFilename?": "output.mp4",
+  "textOverlays?": [
+    { "text": "ESTABLISH", "startTime": 0, "duration": 2, "position": "bottom" }
+  ],
+  "musicTrack?": "/audio/background.mp3",
+  "musicVolume?": 0.3,
+  "videoVolume?": 1.0
+}
+```
+- **Energy-based transitions** (when `energy` values provided on shots):
+  - Drop ≥ 0.4: insert 0.5s black
+  - Rise ≥ 0.4: hard cut with 0.1s trimmed from outgoing
+  - Change < 0.2: 0.25s crossfade dissolve
+- **textOverlays**: Burn text onto video (position: "top", "center", "bottom")
+- **musicTrack/musicVolume**: Mix background music under video (fades out in last 1s)
+- **videoVolume**: Control video's native audio level (0=mute, 1=full)
 
 Generated assets go to `data/` subdirectories: `audio/`, `video/`, `exports/`, `frames/`. Generated images go to `generated-images/`.
 
