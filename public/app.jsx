@@ -10,7 +10,7 @@ const HOLD_MUSIC_PROJECT = {
     {
       shot_id: "shot_1",
       duration_target: 6,
-      veo_prompt: "Close-up of a landline phone handset lying on a desk, cord coiled. Hold music faintly audible concept. Office desk with coffee ring stains, fluorescent lighting. Documentary realism, shallow depth of field, 4K.",
+      description: "Close-up of a landline phone handset lying on a desk, cord coiled. Hold music faintly audible concept. Office desk with coffee ring stains, fluorescent lighting. Documentary realism, shallow depth of field, 4K.",
       vo: null,
       status: "pending",
       selected_option: null,
@@ -19,7 +19,7 @@ const HOLD_MUSIC_PROJECT = {
     {
       shot_id: "shot_2",
       duration_target: 7,
-      veo_prompt: "Fingers drumming slowly on a desk next to a phone. Wedding ring visible. Waiting. Slow, restless rhythm. Close-up on hand, soft office lighting, mundane tension, 4K corporate documentary style.",
+      description: "Fingers drumming slowly on a desk next to a phone. Wedding ring visible. Waiting. Slow, restless rhythm. Close-up on hand, soft office lighting, mundane tension, 4K corporate documentary style.",
       vo: { text: "Your call is important to us.", timing: "end", target_seconds: 3 },
       status: "pending",
       selected_option: null,
@@ -28,7 +28,7 @@ const HOLD_MUSIC_PROJECT = {
     {
       shot_id: "shot_3",
       duration_target: 7,
-      veo_prompt: "Wall clock in a beige office. Second hand ticking. Time-lapse clouds visible through window behind it. The clock hands don't move but the clouds race. Surreal mundane, liminal office space, 4K.",
+      description: "Wall clock in a beige office. Second hand ticking. Time-lapse clouds visible through window behind it. The clock hands don't move but the clouds race. Surreal mundane, liminal office space, 4K.",
       vo: { text: "Please continue to hold.", timing: "middle", target_seconds: 2.5 },
       status: "pending",
       selected_option: null,
@@ -37,7 +37,7 @@ const HOLD_MUSIC_PROJECT = {
     {
       shot_id: "shot_4",
       duration_target: 8,
-      veo_prompt: "A desk plant slowly wilting in time-lapse. Phone handset still in frame, out of focus in foreground. Office light shifts from day to golden hour to dusk. Passage of time, melancholic, 4K.",
+      description: "A desk plant slowly wilting in time-lapse. Phone handset still in frame, out of focus in foreground. Office light shifts from day to golden hour to dusk. Passage of time, melancholic, 4K.",
       vo: { text: "You are currently caller number... eight million.", timing: "start", target_seconds: 4 },
       status: "pending",
       selected_option: null,
@@ -46,7 +46,7 @@ const HOLD_MUSIC_PROJECT = {
     {
       shot_id: "shot_5",
       duration_target: 5,
-      veo_prompt: "The phone handset from shot 1, same framing. Dust has accumulated on the desk. The coffee ring is darker, older. Nothing else has changed. Subtle horror of stasis, 4K documentary realism.",
+      description: "The phone handset from shot 1, same framing. Dust has accumulated on the desk. The coffee ring is darker, older. Nothing else has changed. Subtle horror of stasis, 4K documentary realism.",
       vo: { text: "A representative will be with you shortly.", timing: "end", target_seconds: 3 },
       referenceShot: "shot_1",
       status: "pending",
@@ -243,7 +243,7 @@ function VideoPipelineControl() {
       
       // Get the original Veo prompt for this shot
       const shot = project?.shots?.find(s => s.shot_id === shotId);
-      const originalPrompt = shot?.veo_prompt || shot?.description || '';
+      const originalPrompt = shot?.description || shot?.description || '';
       
       const response = await fetch('/api/gemini/analyze-video', {
         method: 'POST',
@@ -385,7 +385,7 @@ DURATION: ~${project.target_duration} seconds
 ASPECT RATIO: ${project.aspect_ratio}
 
 SHOTS:
-${project.shots.map(s => `- ${s.shot_id}: ${s.veo_prompt}${s.vo ? ` [VO: "${s.vo.text}"]` : ''}`).join('\n')}
+${project.shots.map(s => `- ${s.shot_id}: ${s.description}${s.vo ? ` [VO: "${s.vo.text}"]` : ''}`).join('\n')}
 
 Generate metadata optimized for YouTube Shorts discovery. Return JSON only:
 {
@@ -515,7 +515,7 @@ Respond with ONLY valid JSON, no markdown, no explanation:
     {
       "shot_id": "shot_1",
       "duration_target": 8,
-      "veo_prompt": "Detailed prompt for Veo video generation...",
+      "description": "Detailed prompt for Veo video generation...",
       "vo": null,
       "status": "pending",
       "selected_option": null,
@@ -524,7 +524,7 @@ Respond with ONLY valid JSON, no markdown, no explanation:
     {
       "shot_id": "shot_2",
       "duration_target": 7,
-      "veo_prompt": "Another detailed prompt...",
+      "description": "Another detailed prompt...",
       "vo": { "text": "Short VO line.", "timing": "end", "target_seconds": 3 },
       "status": "pending",
       "selected_option": null,
@@ -1146,7 +1146,7 @@ Respond with ONLY valid JSON, no markdown, no explanation:
 Concept: ${project.concept}
 
 This is ${shotId} with the following prompt:
-"${shot.veo_prompt}"
+"${shot.description}"
 
 ${shot.vo ? `VO for this shot: "${shot.vo.text}" (${shot.vo.timing}, ${shot.vo.target_seconds}s)` : 'No VO for this shot.'}
 
@@ -1638,12 +1638,12 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
                     </div>
 
                     <div className="label" style={{ marginTop: '20px' }}>Veo Prompt</div>
-                    <div className="prompt-box">{shot.veo_prompt}</div>
+                    <div className="prompt-box">{shot.description}</div>
 
                     <div style={{ marginTop: '12px' }}>
                       <button
                         className="btn"
-                        onClick={() => generateFramePrompts(activeShot, shot.veo_prompt)}
+                        onClick={() => generateFramePrompts(activeShot, shot.description)}
                         disabled={framePromptsLoading[activeShot]}
                         style={{ marginBottom: '12px' }}
                       >
@@ -1689,7 +1689,7 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
                       <div className="label">Shot Breakdown</div>
                       <button
                         className="btn"
-                        onClick={() => breakdownShot(activeShot, shot.veo_prompt, shot.vo?.target_seconds || 8)}
+                        onClick={() => breakdownShot(activeShot, shot.description, shot.vo?.target_seconds || 8)}
                         disabled={shotBreakdownLoading[activeShot]}
                         style={{ marginTop: '8px', marginBottom: '12px' }}
                       >
@@ -1992,7 +1992,7 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
                             }
                           }
                           
-                          generateVeoClip(activeShot, shot.veo_prompt, shot.duration_target, refImage);
+                          generateVeoClip(activeShot, shot.description, shot.duration_target, refImage);
                         }}
                         disabled={veoGenerating[activeShot] || (shot.referenceShot && !selectedForAssembly[shot.referenceShot])}
                       >
@@ -2521,7 +2521,7 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
                   <button
                     className="btn"
                     style={{ padding: '4px 8px', fontSize: '11px' }}
-                    onClick={() => navigator.clipboard.writeText(shot.veo_prompt)}
+                    onClick={() => navigator.clipboard.writeText(shot.description)}
                   >
                     Copy
                   </button>
@@ -2532,7 +2532,7 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
                   color: '#e0e0e0',
                   marginBottom: shot.vo ? '12px' : 0
                 }}>
-                  {shot.veo_prompt}
+                  {shot.description}
                 </div>
                 {shot.vo && (
                   <div style={{ 
@@ -2583,7 +2583,7 @@ ffmpeg -i shot_1.mp4 -i shot_2.mp4 -i shot_3.mp4 -i shot_4.mp4 -i shot_5.mp4 \\
                 style={{ width: '100%' }}
                 onClick={() => {
                   const allPrompts = project.shots.map((shot, i) => 
-                    `=== ${shot.shot_id.toUpperCase()} (${shot.duration_target}s) ===\n${shot.veo_prompt}${shot.vo ? `\n\nVO (${shot.vo.timing}, ${shot.vo.target_seconds}s): "${shot.vo.text}"` : ''}`
+                    `=== ${shot.shot_id.toUpperCase()} (${shot.duration_target}s) ===\n${shot.description}${shot.vo ? `\n\nVO (${shot.vo.timing}, ${shot.vo.target_seconds}s): "${shot.vo.text}"` : ''}`
                   ).join('\n\n');
                   const full = `PROJECT: ${project.title}\n${project.concept}\n\nMUSIC: ${project.music?.description || 'None'}\n\nVO DIRECTION: ${project.vo_direction?.voice || 'None'}\n\n${allPrompts}\n\n=== TITLE CARD (${project.title_card?.duration}s) ===\n${project.title_card?.text}\nStyle: ${project.title_card?.style}`;
                   navigator.clipboard.writeText(full);

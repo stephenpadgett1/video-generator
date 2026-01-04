@@ -1266,33 +1266,11 @@ const ARC_TYPES = {
   'bookend': 'Strong open and close with lower middle'
 };
 
-app.post('/api/generate-structure', async (req, res) => {
-  const config = loadConfig();
-
-  if (!config.claudeKey) {
-    return res.status(400).json({ error: 'No Claude API key configured' });
-  }
-
-  const { concept, duration, arc = 'tension-release' } = req.body;
-
-  if (!concept) {
-    return res.status(400).json({ error: 'concept is required' });
-  }
-
-  if (!duration || typeof duration !== 'number' || duration <= 0) {
-    return res.status(400).json({ error: 'duration is required and must be a positive number' });
-  }
-
-  if (!ARC_TYPES[arc]) {
-    return res.status(400).json({
-      error: `Invalid arc type. Must be one of: ${Object.keys(ARC_TYPES).join(', ')}`
-    });
-  }
-
+// Reusable function to generate shot structure
+async function generateStructureInternal(concept, duration, arc, claudeKey) {
   const arcDescription = ARC_TYPES[arc];
 
-  try {
-    const systemPrompt = `You are a shot structure architect for short-form video. Your job is to divide a video concept into shots with appropriate roles and energy levels.
+  const systemPrompt = `You are a shot structure architect for short-form video. Your job is to divide a video concept into shots with appropriate roles and energy levels.
 
 ## Role Vocabulary
 - establish: Set the scene, introduce the subject
@@ -1335,13 +1313,141 @@ Assign roles that make narrative sense for the concept.
 
 Return ONLY valid JSON, no explanation.`;
 
-    const userMessage = `CONCEPT: ${concept}
+  const userMessage = `CONCEPT: ${concept}
 DURATION: ${duration} seconds
 ARC: ${arc} (${arcDescription})
 
 Generate a shot structure for this piece.`;
 
-    console.log('Generating structure with Claude...');
+  console.log('Generating structure with Claude...');
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': claudeKey,
+      'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }]
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('Claude API error:', error);
+    throw new Error(error);
+  }
+
+  const data = await response.json();
+  const content = data.content?.[0]?.text;
+
+  if (!content) {
+    throw new Error('No response from Claude');
+  }
+
+  // Parse JSON response (handle potential markdown wrapping)
+  const cleaned = content.replace(/```json|```/g, '').trim();
+  const structure = JSON.parse(cleaned);
+
+  console.log('Generated structure:', JSON.stringify(structure, null, 2));
+
+  return structure;
+}
+
+app.post('/api/generate-structure', async (req, res) => {
+  const config = loadConfig();
+
+  if (!config.claudeKey) {
+    return res.status(400).json({ error: 'No Claude API key configured' });
+  }
+
+  const { concept, duration, arc = 'tension-release' } = req.body;
+
+  if (!concept) {
+    return res.status(400).json({ error: 'concept is required' });
+  }
+
+  if (!duration || typeof duration !== 'number' || duration <= 0) {
+    return res.status(400).json({ error: 'duration is required and must be a positive number' });
+  }
+
+  if (!ARC_TYPES[arc]) {
+    return res.status(400).json({
+      error: `Invalid arc type. Must be one of: ${Object.keys(ARC_TYPES).join(', ')}`
+    });
+  }
+
+  try {
+    const structure = await generateStructureInternal(concept, duration, arc, config.claudeKey);
+    res.json(structure);
+  } catch (err) {
+    console.error('Generate structure error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/generate-project-from-structure', async (req, res) => {
+  const config = loadConfig();
+
+  if (!config.claudeKey) {
+    return res.status(400).json({ error: 'No Claude API key configured' });
+  }
+
+  const { concept, duration, arc = 'tension-release', style } = req.body;
+
+  if (!concept) {
+    return res.status(400).json({ error: 'concept is required' });
+  }
+
+  if (!duration || typeof duration !== 'number' || duration <= 0) {
+    return res.status(400).json({ error: 'duration is required and must be a positive number' });
+  }
+
+  if (!ARC_TYPES[arc]) {
+    return res.status(400).json({
+      error: `Invalid arc type. Must be one of: ${Object.keys(ARC_TYPES).join(', ')}`
+    });
+  }
+
+  try {
+    // Step 1: Generate the structure
+    console.log('Generating project structure...');
+    const structure = await generateStructureInternal(concept, duration, arc, config.claudeKey);
+
+    // Step 2: Generate descriptions for each shot
+    console.log('Generating shot descriptions...');
+
+    const systemPrompt = `You are a visual storyteller for short-form video. Your job is to write vivid, evocative descriptions of what the viewer sees and feels in each shot.
+
+Write descriptions that are:
+- Visual and sensory (what we see, the mood, the atmosphere)
+- Appropriate to the shot's role and energy level
+- Consistent with the overall concept and style
+- NOT technical video prompts (avoid camera directions, aspect ratios, technical jargon)
+
+The description should paint a picture of the moment, not instruct a video generator.
+
+You will receive a list of shots with their roles, energy levels, and positions in the arc. Generate a description for each one.
+
+Return a JSON array of descriptions in the same order as the shots provided.`;
+
+    let userMessage = `CONCEPT: ${concept}
+STYLE: ${style || 'unspecified'}
+ARC: ${arc} (${structure.arc_description})
+
+Generate a description for each of these shots:
+
+${structure.shots.map((shot, i) => `${i + 1}. ${shot.shot_id}
+   - Role: ${shot.role}
+   - Energy: ${shot.energy}
+   - Duration: ${shot.duration_target}s
+   - Position: ${shot.position} (0=start, 1=end)`).join('\n\n')}
+
+Return a JSON array of description strings, one for each shot in order.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1352,7 +1458,7 @@ Generate a shot structure for this piece.`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
+        max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }]
       })
@@ -1368,18 +1474,38 @@ Generate a shot structure for this piece.`;
     const content = data.content?.[0]?.text;
 
     if (!content) {
-      return res.status(500).json({ error: 'No response from Claude' });
+      return res.status(500).json({ error: 'No response from Claude for descriptions' });
     }
 
-    // Parse JSON response (handle potential markdown wrapping)
+    // Parse descriptions array
     const cleaned = content.replace(/```json|```/g, '').trim();
-    const structure = JSON.parse(cleaned);
+    const descriptions = JSON.parse(cleaned);
 
-    console.log('Generated structure:', JSON.stringify(structure, null, 2));
+    // Step 3: Merge descriptions into shots
+    const shotsWithDescriptions = structure.shots.map((shot, i) => ({
+      ...shot,
+      description: descriptions[i] || ''
+    }));
 
-    res.json(structure);
+    // Generate project ID
+    const slug = concept.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 30);
+    const projectId = `${slug}_${Date.now()}`;
+
+    const project = {
+      project_id: projectId,
+      concept: structure.concept,
+      duration: structure.duration,
+      arc: structure.arc,
+      arc_description: structure.arc_description,
+      style: style || null,
+      shots: shotsWithDescriptions
+    };
+
+    console.log('Generated project:', JSON.stringify(project, null, 2));
+
+    res.json(project);
   } catch (err) {
-    console.error('Generate structure error:', err);
+    console.error('Generate project error:', err);
     res.status(500).json({ error: err.message });
   }
 });
