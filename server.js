@@ -1481,6 +1481,16 @@ async function generateStructureInternal(concept, duration, arc, claudeKey) {
 
   const systemPrompt = `You are a shot structure architect for short-form video. Your job is to divide a video concept into shots with appropriate roles and energy levels.
 
+## Character Extraction
+First, identify all characters in the concept:
+- Characters are people or anthropomorphized entities with agency in the story
+- Do NOT include inanimate objects, locations, or abstract concepts as characters
+- If no characters are present, return an empty characters array
+
+For each character, provide:
+- id: snake_case identifier (e.g., "woman_1", "elderly_man", "young_boy", "robot_dog")
+- description: visual appearance suitable for image generation (age, build, clothing, hair, distinguishing features)
+
 ## Role Vocabulary
 - establish: Set the scene, introduce the subject
 - emphasize: Highlight or intensify important elements
@@ -1509,12 +1519,16 @@ Return a JSON object with:
 - duration: total duration in seconds
 - arc: the arc type used
 - arc_description: human-readable arc description
+- characters: array of character objects, each with:
+  - id: snake_case identifier
+  - description: visual appearance for image generation
 - shots: array of shot objects, each with:
   - shot_id: "shot_1", "shot_2", etc.
   - role: one of the role vocabulary terms
   - energy: 0-1 value matching the arc shape
   - duration_target: seconds for this shot (all shots should sum to total duration)
   - position: normalized position in the piece (0.0 = start, 1.0 = end)
+  - characters: array of character IDs that appear in this shot (empty array if none)
 
 Aim for 3-6 shots depending on duration. Shorter pieces (under 15s) should have fewer shots.
 Match the energy curve to the specified arc type.
@@ -1664,17 +1678,23 @@ You will receive a list of shots with their roles, energy levels, and positions 
 
 Return a JSON array of descriptions in the same order as the shots provided.`;
 
+    // Build character context if characters exist
+    const charactersContext = structure.characters && structure.characters.length > 0
+      ? `\nCHARACTERS:\n${structure.characters.map(c => `- ${c.id}: ${c.description}`).join('\n')}\n`
+      : '';
+
     let userMessage = `CONCEPT: ${concept}
 STYLE: ${style || 'unspecified'}
 ARC: ${arc} (${structure.arc_description})
-
+${charactersContext}
 Generate ${include_vo ? 'a description and VO decision' : 'a description'} for each of these shots:
 
 ${structure.shots.map((shot, i) => `${i + 1}. ${shot.shot_id}
    - Role: ${shot.role}
    - Energy: ${shot.energy}
    - Duration: ${shot.duration_target}s
-   - Position: ${shot.position} (0=start, 1=end)`).join('\n\n')}
+   - Position: ${shot.position} (0=start, 1=end)
+   - Characters: ${shot.characters && shot.characters.length > 0 ? shot.characters.join(', ') : 'none'}`).join('\n\n')}
 
 ${include_vo
       ? 'Return a JSON array of objects, each with "description" (string) and "vo" (object with text/timing, or null).'
@@ -1742,6 +1762,7 @@ ${include_vo
       arc: structure.arc,
       arc_description: structure.arc_description,
       style: style || null,
+      characters: structure.characters || [],
       shots: shotsWithDescriptions
     };
 
