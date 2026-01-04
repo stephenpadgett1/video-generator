@@ -1491,6 +1491,17 @@ For each character, provide:
 - id: snake_case identifier (e.g., "woman_1", "elderly_man", "young_boy", "robot_dog")
 - description: visual appearance suitable for image generation (age, build, clothing, hair, distinguishing features)
 
+## Environment Extraction
+Identify all distinct environments/locations in the concept:
+- Environments are physical spaces where action takes place
+- Only include environments that will appear in multiple shots or need visual consistency
+- If no specific environments are identifiable, return an empty environments array
+
+For each environment, provide:
+- id: snake_case identifier (e.g., "coffee_shop", "abandoned_warehouse", "moonlit_forest")
+- description: architectural/atmospheric features (interior/exterior, materials, lighting, spatial characteristics)
+- primary: boolean - true if this is the main location (only one should be primary)
+
 ## Role Vocabulary
 - establish: Set the scene, introduce the subject
 - emphasize: Highlight or intensify important elements
@@ -1522,6 +1533,10 @@ Return a JSON object with:
 - characters: array of character objects, each with:
   - id: snake_case identifier
   - description: visual appearance for image generation
+- environments: array of environment objects, each with:
+  - id: snake_case identifier
+  - description: architectural/atmospheric features for image generation
+  - primary: boolean (true for main location)
 - shots: array of shot objects, each with:
   - shot_id: "shot_1", "shot_2", etc.
   - role: one of the role vocabulary terms
@@ -1529,6 +1544,7 @@ Return a JSON object with:
   - duration_target: seconds for this shot (all shots should sum to total duration)
   - position: normalized position in the piece (0.0 = start, 1.0 = end)
   - characters: array of character IDs that appear in this shot (empty array if none)
+  - environment: environment ID for this shot (null if no specific environment)
 
 Aim for 3-6 shots depending on duration. Shorter pieces (under 15s) should have fewer shots.
 Match the energy curve to the specified arc type.
@@ -1910,6 +1926,16 @@ Return a JSON array of description strings, one for each shot in order.`;
         projectData.characters.filter(c => c.base_image_path).map(c => c.id));
     }
 
+    // Build environment lookup map for locked environments
+    const environmentMap = {};
+    if (projectData.environments && Array.isArray(projectData.environments)) {
+      for (const env of projectData.environments) {
+        environmentMap[env.id] = env;
+      }
+      console.log('Environment map built:', Object.keys(environmentMap), 'Environments with base_image_path:',
+        projectData.environments.filter(e => e.base_image_path).map(e => e.id));
+    }
+
     // For each shot, generate Veo prompt and submit job
     const jobs = [];
     const projectStyle = projectData.style || style;
@@ -1945,6 +1971,26 @@ Return a JSON array of description strings, one for each shot in order.`;
         }
       }
 
+      // Build environment context for this shot
+      let environmentContext = null;
+      let environmentImagePath = null;
+
+      if (shot.environment && environmentMap[shot.environment]) {
+        const env = environmentMap[shot.environment];
+        if (env.locked_description) {
+          environmentContext = `ENVIRONMENT (must match exactly): ${env.locked_description}`;
+        }
+        if (env.base_image_path) {
+          environmentImagePath = env.base_image_path;
+        }
+      }
+
+      // Combine character and environment context
+      const additionalContextParts = [];
+      if (characterContext) additionalContextParts.push(characterContext);
+      if (environmentContext) additionalContextParts.push(environmentContext);
+      const combinedContext = additionalContextParts.length > 0 ? additionalContextParts.join('\n\n') : null;
+
       // Generate Veo prompt from description
       const veoPrompt = await generateVeoPromptInternal(
         shot.description,
@@ -1953,7 +1999,7 @@ Return a JSON array of description strings, one for each shot in order.`;
         config.claudeKey,
         {
           aspectRatio,
-          additionalContext: characterContext
+          additionalContext: combinedContext
         }
       );
 
@@ -1966,10 +2012,12 @@ Return a JSON array of description strings, one for each shot in order.`;
         durationSeconds: shot.duration_target
       };
 
-      // Add reference image if character has one
-      if (referenceImagePath) {
-        jobInput.referenceImagePath = referenceImagePath;
-        console.log(`Using reference image for ${shot.shot_id}: ${referenceImagePath}`);
+      // Add reference image: character takes priority, environment as fallback
+      const finalReferenceImage = referenceImagePath || environmentImagePath;
+      if (finalReferenceImage) {
+        jobInput.referenceImagePath = finalReferenceImage;
+        const source = referenceImagePath ? 'character' : 'environment';
+        console.log(`Using ${source} reference image for ${shot.shot_id}: ${finalReferenceImage}`);
       }
 
       const job = {
@@ -2285,6 +2333,210 @@ Example format: "Caucasian man, mid-30s, short brown hair with slight wave, athl
     });
   } catch (err) {
     console.error('Lock character error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ Lock Environment ============
+
+app.post('/api/lock-environment', async (req, res) => {
+  const config = loadConfig();
+
+  try {
+    const { environment, style } = req.body;
+
+    // Validate input
+    if (!environment || !environment.id || !environment.description) {
+      return res.status(400).json({
+        error: 'environment object with id and description is required'
+      });
+    }
+
+    const { accessToken, projectId } = await getVeoAccessToken(config);
+
+    // Step 1: Generate wide establishing shot via Imagen (no people, architectural focus)
+    const imagenPrompt = `Wide establishing shot of ${environment.description}. Empty scene with no people or characters visible. Focus on architecture, atmosphere, and spatial depth. Cinematic composition, dramatic lighting.${style ? ' ' + style : ''}`;
+
+    console.log('Generating environment reference image:', imagenPrompt);
+
+    const imagenResponse = await fetch(
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/imagen-3.0-generate-002:predict`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          instances: [{ prompt: imagenPrompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: '16:9'  // Wide establishing shot
+          }
+        })
+      }
+    );
+
+    if (!imagenResponse.ok) {
+      const errorText = await imagenResponse.text();
+      throw new Error(`Imagen API error: ${imagenResponse.status} - ${errorText}`);
+    }
+
+    const imagenData = await imagenResponse.json();
+    const base64Image = imagenData.predictions?.[0]?.bytesBase64Encoded;
+
+    if (!base64Image) {
+      throw new Error('No image generated from Imagen');
+    }
+
+    // Step 2: Save image with environment-specific filename
+    const imagesDir = path.join(__dirname, 'generated-images');
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+
+    const filename = `environment_${environment.id}_base.png`;
+    const filepath = path.join(imagesDir, filename);
+    fs.writeFileSync(filepath, Buffer.from(base64Image, 'base64'));
+    console.log('Saved environment base image to:', filepath);
+
+    // Step 3: Analyze with Gemini Pro to extract immutable architectural/atmospheric features
+    const geminiRequestBody = {
+      contents: [{
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'image/png',
+              data: base64Image
+            }
+          },
+          {
+            text: `Analyze this reference image of an environment/location. Extract ONLY the immutable architectural and atmospheric features that must stay consistent across video shots.
+
+Include:
+- Setting type (interior/exterior, architectural style)
+- Materials and textures (brick, wood, concrete, metal)
+- Color palette (dominant and accent colors)
+- Lighting character (natural/artificial, warm/cool, direction)
+- Key spatial elements (ceiling height, depth, openings)
+
+Exclude: moveable objects, weather conditions, people, vehicles, temporary items.
+
+Output format: A single paragraph, 25-40 words. Example: "Industrial warehouse interior, exposed red brick walls, concrete floor, high vaulted ceiling with steel beams, warm amber light from tall windows, deep perspective."`
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 1024
+      }
+    };
+
+    const geminiResponse = await fetch(
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(geminiRequestBody)
+      }
+    );
+
+    if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text();
+      throw new Error(`Gemini API error: ${geminiResponse.status} - ${errorText}`);
+    }
+
+    const geminiData = await geminiResponse.json();
+    let lockedDescription = '';
+    if (geminiData.candidates?.[0]?.content?.parts) {
+      lockedDescription = geminiData.candidates[0].content.parts
+        .map(p => p.text || '')
+        .join('')
+        .trim();
+    }
+
+    if (!lockedDescription) {
+      throw new Error('Failed to extract environment description from Gemini');
+    }
+
+    // Validate description has enough detail (at least 15 words for environments)
+    const wordCount = lockedDescription.split(/\s+/).length;
+    if (wordCount < 15) {
+      console.log(`Locked description too short (${wordCount} words), retrying with explicit prompt...`);
+
+      const retryRequestBody = {
+        contents: [{
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: 'image/png',
+                data: base64Image
+              }
+            },
+            {
+              text: `Describe this environment/location in exactly one paragraph with 25-40 words.
+
+You MUST include ALL of these details:
+1. Interior or exterior setting
+2. Architectural style (modern, industrial, rustic, etc.)
+3. Main materials visible (wood, brick, concrete, glass, etc.)
+4. Color palette (warm/cool, specific dominant colors)
+5. Lighting quality (natural/artificial, bright/dim, warm/cool)
+6. Spatial characteristics (ceiling height, depth, openness)
+
+Do NOT mention people, weather, moveable objects, or temporary items.
+
+Example: "Modern industrial loft interior, exposed red brick walls, polished concrete floors, 20-foot ceilings with black steel beams, floor-to-ceiling windows casting warm afternoon light, open floor plan with deep perspective."`
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1024
+        }
+      };
+
+      const retryResponse = await fetch(
+        `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify(retryRequestBody)
+        }
+      );
+
+      if (retryResponse.ok) {
+        const retryData = await retryResponse.json();
+        if (retryData.candidates?.[0]?.content?.parts) {
+          const retryDescription = retryData.candidates[0].content.parts
+            .map(p => p.text || '')
+            .join('')
+            .trim();
+          if (retryDescription && retryDescription.split(/\s+/).length >= 15) {
+            lockedDescription = retryDescription;
+            console.log('Retry successful, got longer description');
+          }
+        }
+      }
+    }
+
+    console.log('Locked environment description:', lockedDescription);
+
+    res.json({
+      environment_id: environment.id,
+      base_image_path: `/generated-images/${filename}`,
+      locked_description: lockedDescription
+    });
+  } catch (err) {
+    console.error('Lock environment error:', err);
     res.status(500).json({ error: err.message });
   }
 });

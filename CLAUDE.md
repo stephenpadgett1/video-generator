@@ -29,13 +29,20 @@ GET /api/jobs → array of all jobs
 ```json
 POST { "concept": "...", "duration": 12, "arc": "tension-release", "style": "...", "include_vo": true }
 ```
-Returns `{ characters: [{ id, description }], shots: [{ shot_id, role, energy, duration_target, description, characters, vo? }] }`
+Returns `{ characters: [{ id, description }], environments: [{ id, description, primary }], shots: [{ shot_id, role, energy, duration_target, description, characters, environment, vo? }] }`
 
 ### Character Locking (`/api/lock-character`)
 Generates reference image and extracts immutable visual features for character consistency.
 ```json
 POST { "character": { "id": "woman_1", "description": "..." }, "style": "..." }
 → { "character_id": "...", "base_image_path": "...", "locked_description": "East Asian woman, late 20s, shoulder-length black hair, slim build." }
+```
+
+### Environment Locking (`/api/lock-environment`)
+Generates reference image and extracts immutable architectural/atmospheric features for location consistency.
+```json
+POST { "environment": { "id": "warehouse", "description": "abandoned industrial warehouse" }, "style": "..." }
+→ { "environment_id": "...", "base_image_path": "...", "locked_description": "Industrial warehouse interior, exposed red brick walls, concrete floor, high vaulted ceiling with steel beams, warm amber light from tall windows." }
 ```
 
 ### Project Execution (`/api/execute-project`)
@@ -70,18 +77,23 @@ audioLayers support `path` for existing files OR `text` + `voice_id` for inline 
 ### Standard Flow
 ```
 1. POST /api/generate-project-from-structure { concept, duration, style, include_vo: true }
-   → { characters, shots }
+   → { characters, environments, shots }
 
 2. POST /api/lock-character { character: characters[0] }  // Optional: lock character appearance
-   → { locked_description }
+   → { locked_description, base_image_path }
 
-3. POST /api/execute-project { project, style, aspectRatio: "9:16" }
+3. POST /api/lock-environment { environment: environments[0] }  // Optional: lock environment appearance
+   → { locked_description, base_image_path }
+
+4. POST /api/execute-project { project, style, aspectRatio: "9:16" }
    → { jobs: [{ job_id }] }
+   // Includes locked character/environment descriptions in prompts
+   // Uses reference images (character priority, environment fallback)
 
-4. GET /api/jobs/:job_id  // Poll until status: "complete"
+5. GET /api/jobs/:job_id  // Poll until status: "complete"
    → { result: { path } }
 
-5. POST /api/assemble { shots: [...], audioLayers: [...] }
+6. POST /api/assemble { shots: [...], audioLayers: [...] }
    → { path: "/exports/final.mp4" }
 ```
 
