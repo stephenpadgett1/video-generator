@@ -43,8 +43,20 @@ Key API routes:
 - `/api/gemini/analyze-video` - Video analysis via Gemini 2.5 Flash
 - `/api/assemble` - ffmpeg-based video assembly with VO mixing
 - `/api/extract-frame` - Frame extraction for reference shots
+- `/api/generate-image` - Generate images via Vertex AI Imagen 3 (saves to `generated-images/`)
+- `/api/generate-frame-prompts` - Generate first/last frame image prompts from a Veo prompt
+- `/api/breakdown-shot` - Break a shot into takes with Veo prompts and transition strategies
+- `/api/jobs` - Job queue for background generation (POST to create, GET to list/fetch)
 
-Generated assets go to `data/` subdirectories: `audio/`, `video/`, `exports/`, `frames/`.
+**Job Queue:**
+Jobs are persisted to `jobs.json`. Supported types: `veo-generate`, `imagen-generate`. Veo jobs automatically poll for completion every 10 seconds.
+```
+POST /api/jobs { type: "veo-generate", input: { prompt, aspectRatio?, durationSeconds?, referenceImagePath?, lastFramePath? } }
+GET /api/jobs/:id → { id, type, status, input, result, error, createdAt, updatedAt }
+GET /api/jobs → array of recent jobs
+```
+
+Generated assets go to `data/` subdirectories: `audio/`, `video/`, `exports/`, `frames/`. Generated images go to `generated-images/`.
 
 ### MCP Server (`mcp/veo-clips-mcp/`)
 TypeScript MCP server for querying and sequencing a pre-analyzed video clip library. Reads from `manifest.json` containing Gemini-analyzed clip metadata.
@@ -61,6 +73,7 @@ Build: `npm run build` → outputs to `dist/server.js`
 - `find_edit_compatible_clips` - Find clips that cut well together
 - `list_sequence_types` - Available sequence type definitions
 - `build_sequence` - Build a sequence with AI-powered clip selection and gap filling
+- `call_video_generator_api` - Make HTTP requests to the video generator API at localhost:3000
 
 **build_sequence** accepts:
 ```json
