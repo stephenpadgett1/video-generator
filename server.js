@@ -14,6 +14,7 @@ app.use(express.static('public'));
 // Config storage (simple file-based for now)
 const CONFIG_PATH = path.join(__dirname, 'data', 'config.json');
 const PROJECTS_PATH = path.join(__dirname, 'data', 'projects');
+const ELEVENLABS_VOICES_CACHE_PATH = path.join(__dirname, 'data', 'elevenlabs-voices.json');
 
 // Ensure data directories exist
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
@@ -69,6 +70,28 @@ function updateJob(jobId, updates) {
   return null;
 }
 
+// ============ ElevenLabs Voice Cache ============
+
+function loadVoicesCache() {
+  try {
+    if (fs.existsSync(ELEVENLABS_VOICES_CACHE_PATH)) {
+      return JSON.parse(fs.readFileSync(ELEVENLABS_VOICES_CACHE_PATH, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Error loading voices cache:', err);
+  }
+  return null;
+}
+
+function saveVoicesCache(voices) {
+  const cache = {
+    fetchedAt: new Date().toISOString(),
+    voices: voices
+  };
+  fs.writeFileSync(ELEVENLABS_VOICES_CACHE_PATH, JSON.stringify(cache, null, 2));
+  return cache;
+}
+
 // ============ Config Routes ============
 
 app.get('/api/config', (req, res) => {
@@ -122,6 +145,8 @@ app.get('/api/elevenlabs/voices', async (req, res) => {
     return res.status(400).json({ error: 'No API key configured' });
   }
 
+  const count = parseInt(req.query.count) || 5;
+
   try {
     const response = await fetch('https://api.elevenlabs.io/v1/voices', {
       headers: {
@@ -129,16 +154,70 @@ app.get('/api/elevenlabs/voices', async (req, res) => {
         'Accept': 'application/json'
       }
     });
-    
+
     if (!response.ok) {
       const error = await response.text();
       return res.status(response.status).json({ error });
     }
-    
+
     const data = await response.json();
-    res.json(data);
+    res.json({ voices: data.voices.slice(0, count) });
   } catch (err) {
     console.error('ElevenLabs voices error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cached voices endpoint - returns locally cached voice metadata
+app.get('/api/elevenlabs/voices/cached', async (req, res) => {
+  const forceRefresh = req.query.refresh === 'true';
+  const count = parseInt(req.query.count) || 5;
+  const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  // Check existing cache
+  const cache = loadVoicesCache();
+
+  if (cache && !forceRefresh) {
+    const cacheAge = Date.now() - new Date(cache.fetchedAt).getTime();
+    if (cacheAge < maxAgeMs) {
+      return res.json({ ...cache, voices: cache.voices.slice(0, count) });
+    }
+  }
+
+  // Cache is stale/missing/forced - fetch fresh data
+  const config = loadConfig();
+  if (!config.elevenLabsKey) {
+    return res.status(400).json({ error: 'No ElevenLabs API key configured' });
+  }
+
+  try {
+    const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: {
+        'xi-api-key': config.elevenLabsKey,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      // On error, return stale cache if available
+      if (cache) {
+        console.warn('ElevenLabs API error, returning stale cache');
+        return res.json({ ...cache, voices: cache.voices.slice(0, count), stale: true });
+      }
+      const error = await response.text();
+      return res.status(response.status).json({ error });
+    }
+
+    const data = await response.json();
+    const newCache = saveVoicesCache(data.voices);
+    res.json({ ...newCache, voices: newCache.voices.slice(0, count) });
+  } catch (err) {
+    // On network error, return stale cache if available
+    if (cache) {
+      console.warn('Network error, returning stale cache:', err.message);
+      return res.json({ ...cache, voices: cache.voices.slice(0, count), stale: true });
+    }
+    console.error('ElevenLabs voices cache error:', err);
     res.status(500).json({ error: err.message });
   }
 });
