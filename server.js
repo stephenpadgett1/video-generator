@@ -377,13 +377,7 @@ async function pollVeoJob(jobId, operationName) {
 
               updateJob(jobId, {
                 status: 'complete',
-                result: {
-                  operationName,
-                  filename,
-                  path: `/video/${filename}`,
-                  duration,
-                  response: data.response
-                }
+                result: { operationName, filename, path: `/video/${filename}`, duration }
               });
             } catch (saveErr) {
               console.error(`Veo job ${jobId} save error:`, saveErr.message);
@@ -451,14 +445,7 @@ async function pollVeoJob(jobId, operationName) {
 
               updateJob(jobId, {
                 status: 'complete',
-                result: {
-                  operationName,
-                  videoUri,
-                  filename,
-                  path: `/video/${filename}`,
-                  duration,
-                  response: data.response
-                }
+                result: { operationName, filename, path: `/video/${filename}`, duration }
               });
             } catch (downloadErr) {
               console.error(`Veo job ${jobId} download error:`, downloadErr.message);
