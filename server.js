@@ -1681,13 +1681,15 @@ Provide:
 // ============ Video Assembly ============
 
 app.post('/api/assemble', async (req, res) => {
-  const { shots, outputFilename } = req.body;
-  
+  const { shots, outputFilename, textOverlays = [] } = req.body;
+
   // shots should be array of: { videoPath, voPath?, trimStart?, trimEnd?, energy? }
   // Energy-based transitions when energy values are provided:
   //   - Drop >= 0.4: insert 0.5s black before lower-energy shot
   //   - Rise >= 0.4: hard cut with 0.1s trimmed from outgoing shot
   //   - Change < 0.2: 0.25s crossfade dissolve
+  // textOverlays (optional): array of { text, startTime, duration, position? }
+  //   - position: "top", "center", or "bottom" (default "bottom")
   
   if (!shots || shots.length === 0) {
     return res.status(400).json({ error: 'No shots provided' });
@@ -1878,17 +1880,53 @@ app.post('/api/assemble', async (req, res) => {
     // Write concat file
     fs.writeFileSync(concatFilePath, concatLines.join('\n'));
 
+    // Determine if we need text overlays
+    const hasOverlays = textOverlays && textOverlays.length > 0;
+    const concatOutputPath = hasOverlays ? path.join(tempDir, 'concat_output.mp4') : outputPath;
+
     // Concatenate all clips
-    const concatCmd = `ffmpeg -y -f concat -safe 0 -i "${concatFilePath}" -c copy "${outputPath}"`;
+    const concatCmd = `ffmpeg -y -f concat -safe 0 -i "${concatFilePath}" -c copy "${concatOutputPath}"`;
     console.log('Concatenating:', concatCmd);
     execSync(concatCmd, { stdio: 'pipe' });
-    
+
+    // Apply text overlays if present
+    if (hasOverlays) {
+      console.log(`Applying ${textOverlays.length} text overlay(s)...`);
+
+      // Build drawtext filter chain
+      const drawtextFilters = textOverlays.map((overlay, idx) => {
+        const text = (overlay.text || '').replace(/'/g, "'\\''").replace(/:/g, '\\:');
+        const startTime = overlay.startTime || 0;
+        const endTime = startTime + (overlay.duration || 2);
+        const position = overlay.position || 'bottom';
+
+        // Y position based on position setting
+        let yExpr;
+        if (position === 'top') {
+          yExpr = 'h*0.1';
+        } else if (position === 'center') {
+          yExpr = '(h-text_h)/2';
+        } else {
+          yExpr = 'h*0.85';
+        }
+
+        console.log(`  Overlay ${idx + 1}: "${overlay.text}" at ${startTime}s-${endTime}s (${position})`);
+
+        return `drawtext=text='${text}':fontsize=48:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=${yExpr}:enable='between(t,${startTime},${endTime})'`;
+      });
+
+      const filterChain = drawtextFilters.join(',');
+      const overlayCmd = `ffmpeg -y -i "${concatOutputPath}" -vf "${filterChain}" -c:v libx264 -preset fast -crf 23 -c:a copy "${outputPath}"`;
+      console.log('Applying text overlays:', overlayCmd);
+      execSync(overlayCmd, { stdio: 'pipe' });
+    }
+
     // Get duration of final video
     const duration = getVideoDuration(outputPath);
-    
+
     // Clean up temp directory
     fs.rmSync(tempDir, { recursive: true, force: true });
-    
+
     console.log('Assembly complete:', outputPath);
     
     res.json({
