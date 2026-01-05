@@ -102,6 +102,26 @@ Generates reference image + extracts immutable features (30-50 words including c
 - Audio: `data/audio/`
 - Images: `generated-images/`
 - Exports: `data/exports/`
+- Agents: `src/agents/`
+
+## Claude Agents
+
+TypeScript agents using the Anthropic SDK for specialized workflows.
+
+```bash
+cd src/agents && npm install
+```
+
+**Available agents:**
+- `concept-reviewer.ts` - Review video concepts for clarity and AI feasibility
+- `example.ts` - Basic SDK usage demonstration
+
+```bash
+# Run an agent
+npx tsx concept-reviewer.ts "A robot walks through rain"
+```
+
+Create new agents by adding `.ts` files to `src/agents/`. See existing agents for patterns.
 
 ## Known Veo Limitations
 
