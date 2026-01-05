@@ -8,6 +8,7 @@
  *   npx tsx video-producer.ts idea.txt        # Process specific file
  *   npx tsx video-producer.ts --all           # Process entire queue
  *   npx tsx video-producer.ts --status        # Check status of in-progress jobs
+ *   npx tsx video-producer.ts --instructions "Be experimental and take creative risks"
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -188,8 +189,15 @@ async function resumeFromCheckpoint(checkpoint: Checkpoint): Promise<string | nu
 }
 
 // Step 1: Interpret the idea
-async function interpretIdea(ideaText: string): Promise<InterpretedIdea> {
+async function interpretIdea(ideaText: string, instructions?: string): Promise<InterpretedIdea> {
   console.log("\n[1/7] Interpreting idea...");
+  if (instructions) {
+    console.log(`  Instructions: ${instructions}`);
+  }
+
+  const instructionBlock = instructions
+    ? `\nINTERPRETATION GUIDANCE:\n${instructions}\n`
+    : "";
 
   const response = await claude.messages.create({
     model: "claude-sonnet-4-20250514",
@@ -197,7 +205,7 @@ async function interpretIdea(ideaText: string): Promise<InterpretedIdea> {
     messages: [{
       role: "user",
       content: `Analyze this video idea and decide on production parameters.
-
+${instructionBlock}
 VIDEO IDEA:
 ${ideaText}
 
@@ -349,7 +357,7 @@ Respond with ONLY a JSON object:
 }
 
 // Main production flow - submits jobs and checkpoints, returns null if waiting
-async function produceVideo(ideaFile: string): Promise<string | null> {
+async function produceVideo(ideaFile: string, instructions?: string): Promise<string | null> {
   const ideaPath = join(SLUSH_DIR, ideaFile);
   const ideaText = readFileSync(ideaPath, "utf-8").trim();
 
@@ -365,7 +373,7 @@ async function produceVideo(ideaFile: string): Promise<string | null> {
   }
 
   // Step 1: Interpret
-  const params = await interpretIdea(ideaText);
+  const params = await interpretIdea(ideaText, instructions);
 
   // Step 2: Generate project
   console.log("\n[2/7] Generating project structure...");
@@ -409,11 +417,21 @@ async function produceVideo(ideaFile: string): Promise<string | null> {
   return null; // Indicates job is in progress, not complete
 }
 
+// Parse --instructions flag from args
+function parseInstructions(args: string[]): string | undefined {
+  const idx = args.indexOf("--instructions");
+  if (idx !== -1 && args[idx + 1]) {
+    return args[idx + 1];
+  }
+  return undefined;
+}
+
 // CLI entry point
 async function main() {
   ensureDirectories();
 
   const args = process.argv.slice(2);
+  const instructions = parseInstructions(args);
 
   // --status: just show status of in-progress jobs
   if (args.includes("--status")) {
@@ -467,7 +485,7 @@ async function main() {
       if (!next) break;
 
       try {
-        await produceVideo(next);
+        await produceVideo(next, instructions);
         submitted++;
         // Don't process more until current batch completes
         console.log("Run again to check status and process more ideas.");
@@ -487,7 +505,7 @@ async function main() {
     // Process specific file
     const filename = args[0];
     try {
-      await produceVideo(filename);
+      await produceVideo(filename, instructions);
     } catch (err) {
       console.error(`\nFailed: ${filename}`);
       console.error(err);
@@ -504,7 +522,7 @@ async function main() {
     }
 
     try {
-      await produceVideo(next);
+      await produceVideo(next, instructions);
       // Job submitted - run again later to check status
     } catch (err) {
       console.error(`\nFailed: ${next}`);
