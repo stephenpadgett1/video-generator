@@ -3622,6 +3622,69 @@ app.post('/api/extract-frame', async (req, res) => {
   }
 });
 
+// ============ Project Validation ============
+
+const { validateProject, validateProjectStructure, validateNarrativeArc, validateVeoFeasibility, validateAudioSettings, validateTransitions, validateProductionRules } = require('./validators');
+
+app.post('/api/validate-project', (req, res) => {
+  try {
+    const { project, validators } = req.body;
+
+    if (!project) {
+      return res.status(400).json({ error: 'Missing project in request body' });
+    }
+
+    if (validators && Array.isArray(validators)) {
+      const results = {};
+      const validatorMap = {
+        structure: validateProjectStructure,
+        narrative: validateNarrativeArc,
+        feasibility: validateVeoFeasibility,
+        audio: validateAudioSettings,
+        transitions: validateTransitions,
+        production: validateProductionRules
+      };
+
+      validators.forEach(name => {
+        if (validatorMap[name]) {
+          results[name] = validatorMap[name](project);
+        }
+      });
+
+      const totalIssues = Object.values(results).reduce((sum, r) => sum + (r.issues?.length || 0), 0);
+      res.json({
+        valid: totalIssues === 0,
+        results,
+        summary: { totalIssues }
+      });
+    } else {
+      const result = validateProject(project);
+      res.json(result);
+    }
+  } catch (err) {
+    console.error('Validation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/validate-project/:id', (req, res) => {
+  try {
+    const projectId = req.params.id;
+    const files = fs.readdirSync(PROJECTS_PATH).filter(f => f.includes(projectId));
+
+    if (files.length === 0) {
+      return res.status(404).json({ error: 'No project found matching: ' + projectId });
+    }
+
+    const project = JSON.parse(fs.readFileSync(path.join(PROJECTS_PATH, files[0]), 'utf8'));
+    const result = validateProject(project);
+    res.json(result);
+  } catch (err) {
+    console.error('Validation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============ Serve Frontend ============
 
 app.get('/', (req, res) => {

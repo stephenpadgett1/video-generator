@@ -138,6 +138,54 @@ npx tsx system-refiner.ts                      # Run optimization cycle
 npx tsx system-refiner.ts --hints "improve feasibility"
 ```
 
+
+
+## QA Framework
+
+Multi-layer testing system for validating video generation projects.
+
+### Programmatic Validators
+
+```javascript
+const { validateProject } = require('./validators');
+const result = validateProject(project);
+// Returns: { valid, structure, narrative, feasibility, audio, transitions, production, summary }
+```
+
+Individual validators:
+- `validateProjectStructure()` - Fields, types, references
+- `validateNarrativeArc()` - Energy curve matches arc type
+- `validateVeoFeasibility()` - Flag VFX risk keywords
+- `validateAudioSettings()` - VO timing and coverage
+- `validateTransitions()` - Tension-aware transition logic
+- `validateProductionRules()` - Preset consistency
+
+### API Endpoints
+
+```
+POST /api/validate-project
+  { project }                      # Full validation
+  { project, validators: ["structure", "feasibility"] }  # Selective
+
+GET /api/validate-project/:id      # Validate by project ID
+```
+
+### QA Reviewer Agent
+
+AI-powered review using Agent SDK:
+
+```bash
+npx tsx qa-reviewer.ts project.json              # Pre-generation review
+npx tsx qa-reviewer.ts project.json --video dir  # Post-generation review
+npx tsx qa-reviewer.ts --project-id abc123       # Review by ID
+```
+
+Returns structured scores (0-1): structural, narrative, feasibility, audio, visual, emotional
+
+### Reference
+
+See `docs/qa-checklist.md` for manual QA reference.
+
 ## Known Veo Limitations
 
 - VFX-heavy prompts (neon, hologram, glowing) often fail

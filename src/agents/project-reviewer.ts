@@ -3,30 +3,20 @@
  *
  * Evaluates video-producer agent decisions without seeing the video.
  * Reviews interpretation, structure, and feasibility.
+ * Uses Agent SDK for full project context and tool access.
  *
  * Usage:
  *   npx tsx project-reviewer.ts <project_id or path>
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync, readdirSync } from "fs";
 import { dirname, resolve, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECTS_DIR = resolve(__dirname, "../../data/projects");
-
-function getApiKey(): string {
-  if (process.env.ANTHROPIC_API_KEY) {
-    return process.env.ANTHROPIC_API_KEY;
-  }
-  const configPath = resolve(__dirname, "../../data/config.json");
-  try {
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
-    if (config.claudeKey) return config.claudeKey;
-  } catch { /* fall through */ }
-  throw new Error("No API key found");
-}
+const PROJECT_ROOT = resolve(__dirname, "../..");
+const PROJECTS_DIR = resolve(PROJECT_ROOT, "data/projects");
 
 function loadProject(idOrPath: string): object {
   // Try as direct path first
@@ -42,11 +32,18 @@ function loadProject(idOrPath: string): object {
   return JSON.parse(readFileSync(join(PROJECTS_DIR, files[0]), "utf-8"));
 }
 
-const REVIEW_PROMPT = `You are reviewing the creative decisions made by an AI video production agent.
+async function reviewProject(project: object): Promise<void> {
+  console.log("Reviewing project...\n");
 
-Given a project structure, evaluate the agent's choices. Be direct and specific.
+  for await (const message of query({
+    prompt: `You are reviewing the creative decisions made by an AI video production agent.
 
-Consider:
+Given this project structure, evaluate the agent's choices. Be direct and specific.
+
+PROJECT:
+${JSON.stringify(project, null, 2)}
+
+Consider (use your knowledge from CLAUDE.md about Veo limitations):
 - Did the agent understand the original concept?
 - Are the parameter choices (duration, arc, style) appropriate?
 - Does the shot structure tell a coherent story?
@@ -61,26 +58,18 @@ Provide:
 3. Potential issues (bullet points)
 4. Suggestions for improvement (bullet points, if any)
 
-Be concise. Focus on actionable observations.`;
-
-async function reviewProject(project: object): Promise<void> {
-  const client = new Anthropic({ apiKey: getApiKey() });
-
-  console.log("Reviewing project...\n");
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1500,
-    system: REVIEW_PROMPT,
-    messages: [{
-      role: "user",
-      content: `Review this project:\n\n${JSON.stringify(project, null, 2)}`
-    }]
-  });
-
-  for (const block of response.content) {
-    if (block.type === "text") {
-      console.log(block.text);
+Be concise. Focus on actionable observations.`,
+    options: {
+      settingSources: ["project"],
+      cwd: PROJECT_ROOT
+    }
+  })) {
+    if (message.type === "assistant" && message.message?.content) {
+      for (const block of message.message.content) {
+        if ("text" in block && block.text) {
+          console.log(block.text);
+        }
+      }
     }
   }
 }
