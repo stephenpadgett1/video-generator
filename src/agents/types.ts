@@ -8,6 +8,18 @@ export type Mood = 'hopeful' | 'melancholic' | 'tense' | 'peaceful' | 'unsettlin
   'intimate' | 'desolate' | 'mysterious' | 'urgent' | 'contemplative' | 'chaotic' |
   'bittersweet' | 'whimsical' | 'ominous' | 'serene';
 
+// Dialogue system types
+export interface DialogueLine {
+  speaker: string;           // character_id or "narrator"
+  text: string;
+  timing?: number;           // Seconds from shot start (auto-calculated if omitted)
+  mood?: Mood;               // Override shot mood for this line
+}
+
+export interface VoiceCasting {
+  [characterId: string]: string;  // character_id → ElevenLabs voice_id
+}
+
 export interface InterpretedIdea {
   duration: number;
   arc: ArcType;
@@ -47,6 +59,7 @@ export interface Shot {
     text: string;
     timing: 'start' | 'middle' | 'end';
   };
+  dialogue?: DialogueLine[];  // Multi-character dialogue (alternative to vo)
 }
 
 export interface Project {
@@ -60,6 +73,7 @@ export interface Project {
   characters: Character[];
   environments: Environment[];
   shots: Shot[];
+  voiceCasting?: VoiceCasting;  // Character → voice_id mapping
 }
 
 export interface Job {

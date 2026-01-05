@@ -83,6 +83,59 @@ Voice modulation and music profiles computed from shot mood/tension/energy:
 
 See `audio-rules.js` for full mappings.
 
+## Character Dialogue
+
+Multi-character dialogue system for conversation-driven narratives.
+
+### Enabling Dialogue
+
+```
+POST /api/generate-project-from-structure
+  { concept, duration, arc, style, include_dialogue: true }
+```
+
+When `include_dialogue` is true:
+- Claude generates `dialogue` arrays for character interaction shots
+- Voices are auto-assigned based on character descriptions (male/female heuristics)
+- Timing is auto-calculated at 150 WPM with 0.5s pauses between speakers
+
+### Data Model
+
+```typescript
+// Project-level voice mapping
+voiceCasting: {
+  "marcus": "voice_id_abc",     // character_id → ElevenLabs voice_id
+  "elena": "voice_id_def",
+  "narrator": "voice_id_xyz"    // Optional narrator voice
+}
+
+// Shot-level dialogue (alternative to vo)
+shots: [{
+  dialogue: [
+    { speaker: "marcus", text: "I didn't think you'd come.", mood: "tense" },
+    { speaker: "elena", text: "Neither did I." }
+  ]
+}]
+```
+
+### Dialogue vs VO
+
+| Feature | `vo` | `dialogue` |
+|---------|------|------------|
+| Speakers | Single narrator | Multiple characters |
+| Timing | `start`/`middle`/`end` | Auto-calculated or explicit seconds |
+| Voice | Project default | Per-character via `voiceCasting` |
+| Use case | Narration, sparse commentary | Conversations, character scenes |
+
+Both can coexist in the same project - use `vo` for narrator shots, `dialogue` for character interaction.
+
+### Validation
+
+```javascript
+const { validateDialogue } = require('./validators');
+// Checks: speakers in voiceCasting, timing within duration, overlap warnings
+```
+
 ## Transitions (Assembly)
 
 Tension-aware (priority):
@@ -149,7 +202,7 @@ Multi-layer testing system for validating video generation projects.
 ```javascript
 const { validateProject } = require('./validators');
 const result = validateProject(project);
-// Returns: { valid, structure, narrative, feasibility, audio, transitions, production, summary }
+// Returns: { valid, structure, narrative, feasibility, audio, transitions, production, dialogue, summary }
 ```
 
 Individual validators:
@@ -159,6 +212,7 @@ Individual validators:
 - `validateAudioSettings()` - VO timing and coverage
 - `validateTransitions()` - Tension-aware transition logic
 - `validateProductionRules()` - Preset consistency
+- `validateDialogue()` - Speaker references, timing, overlap detection
 
 ### API Endpoints
 

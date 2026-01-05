@@ -2014,7 +2014,7 @@ app.post('/api/generate-project-from-structure', async (req, res) => {
     return res.status(400).json({ error: 'No Claude API key configured' });
   }
 
-  const { concept, duration, arc = 'tension-release', style, include_vo, production_style, production_rules } = req.body;
+  const { concept, duration, arc = 'tension-release', style, include_vo, include_dialogue, production_style, production_rules } = req.body;
 
   if (!concept) {
     return res.status(400).json({ error: 'concept is required' });
@@ -2057,8 +2057,39 @@ Write descriptions that include:
 Example description:
 "Close-up on her weathered hands as they hesitate above the keyboard. Shallow depth of field isolates the trembling fingers against a soft blur of warm lamplight. The camera holds perfectly still - a breath of tension before action."`;
 
-    const systemPrompt = include_vo
-      ? `${cinematographyPreamble}
+    let systemPrompt;
+    if (include_dialogue) {
+      // Multi-character dialogue mode
+      systemPrompt = `${cinematographyPreamble}
+
+Additionally, generate character DIALOGUE for conversation scenes:
+- Analyze which shots involve character interaction - these get dialogue arrays
+- Each dialogue line has: speaker (character_id), text, and optional mood override
+- Timing will be auto-calculated at 150 WPM with 0.5s pauses - you don't need to specify it
+- Make dialogue naturalistic and match character personalities
+- Keep lines SHORT (5-15 words typical, max 25 words)
+- Vary who speaks - back-and-forth exchanges feel natural
+- "narrator" can be used for non-character VO when needed
+
+For shots WITHOUT meaningful character interaction, you may either:
+- Use vo: { text, timing: "start|middle|end" } for narrator-style VO
+- Leave both dialogue and vo empty if the shot works without audio
+
+Return a JSON array where each element is:
+{
+  "description": "...",
+  "dialogue": [
+    { "speaker": "character_id", "text": "Line of dialogue", "mood": "optional_mood_override" },
+    { "speaker": "another_character", "text": "Response" }
+  ]
+}
+or for narrator VO:
+{ "description": "...", "vo": { "text": "...", "timing": "start|middle|end" } }
+or for silent shots:
+{ "description": "...", "dialogue": null, "vo": null }`;
+    } else if (include_vo) {
+      // Single narrator VO mode (legacy)
+      systemPrompt = `${cinematographyPreamble}
 
 Additionally, decide which shots should carry voiceover:
 - NOT every shot needs VO - be selective based on narrative flow
@@ -2070,10 +2101,12 @@ Additionally, decide which shots should carry voiceover:
 Return a JSON array where each element is:
 { "description": "...", "vo": { "text": "...", "timing": "start|middle|end" } }
 or for shots without VO:
-{ "description": "...", "vo": null }`
-      : `${cinematographyPreamble}
+{ "description": "...", "vo": null }`;
+    } else {
+      systemPrompt = `${cinematographyPreamble}
 
 Return a JSON array of description strings, one for each shot in order.`;
+    }
 
     // Build character context if characters exist
     const charactersContext = structure.characters && structure.characters.length > 0
@@ -2086,11 +2119,23 @@ Return a JSON array of description strings, one for each shot in order.`;
       ? `\nPRODUCTION CONSTRAINTS (apply to ALL shots - these are LOCKED):\n${productionConstraintText}\n`
       : '';
 
+    const generateInstruction = include_dialogue
+      ? 'a description and dialogue/VO decisions'
+      : include_vo
+        ? 'a description and VO decision'
+        : 'a description';
+
+    const returnFormatInstruction = include_dialogue
+      ? 'Return a JSON array of objects with "description" (string), and either "dialogue" (array of {speaker, text, mood?}) for character interaction shots, or "vo" ({text, timing}) for narrator shots, or null for silent shots.'
+      : include_vo
+        ? 'Return a JSON array of objects, each with "description" (string) and "vo" (object with text/timing, or null).'
+        : 'Return a JSON array of description strings, one for each shot in order.';
+
     let userMessage = `CONCEPT: ${concept}
 STYLE: ${style || 'unspecified'}
 ARC: ${arc} (${structure.arc_description})
 ${charactersContext}${productionContext}
-Generate ${include_vo ? 'a description and VO decision' : 'a description'} for each of these shots:
+Generate ${generateInstruction} for each of these shots:
 
 ${structure.shots.map((shot, i) => {
       const cinematographyGuidance = buildCinematographyGuidance(shot);
@@ -2107,9 +2152,7 @@ ${structure.shots.map((shot, i) => {
    ${cinematographyGuidance || 'Use your judgment based on role and energy'}`;
     }).join('\n\n')}
 
-${include_vo
-      ? 'Return a JSON array of objects, each with "description" (string) and "vo" (object with text/timing, or null).'
-      : 'Return a JSON array of description strings, one for each shot in order.'}`;
+${returnFormatInstruction}`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -2143,11 +2186,19 @@ ${include_vo
     const cleaned = content.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleaned);
 
-    // Step 3: Merge descriptions (and VO if requested) into shots
+    // Step 3: Merge descriptions (and VO/dialogue if requested) into shots
     const shotsWithDescriptions = structure.shots.map((shot, i) => {
       const item = parsed[i];
-      if (include_vo) {
-        // New format: { description, vo }
+      if (include_dialogue) {
+        // Dialogue mode: { description, dialogue?, vo? }
+        return {
+          ...shot,
+          description: item?.description || '',
+          dialogue: item?.dialogue || null,
+          vo: item?.vo || null
+        };
+      } else if (include_vo) {
+        // Narrator VO mode: { description, vo }
         return {
           ...shot,
           description: item?.description || '',
@@ -2162,6 +2213,86 @@ ${include_vo
       }
     });
 
+    // Step 4: Auto-assign voices for dialogue (if include_dialogue)
+    let voiceCasting = null;
+    if (include_dialogue && structure.characters && structure.characters.length > 0) {
+      console.log('Auto-assigning voices for dialogue...');
+      try {
+        // Get available voices from cache or API
+        let availableVoices = [];
+        const cache = loadElevenLabsCache();
+        if (cache.voices && cache.voices.length > 0) {
+          availableVoices = cache.voices;
+        } else if (config.elevenLabsKey) {
+          // Fetch voices if not cached
+          const voicesResponse = await fetch('https://api.elevenlabs.io/v1/voices', {
+            headers: { 'xi-api-key': config.elevenLabsKey }
+          });
+          if (voicesResponse.ok) {
+            const voicesData = await voicesResponse.json();
+            availableVoices = voicesData.voices || [];
+            updateElevenLabsCache({ voices: availableVoices });
+          }
+        }
+
+        if (availableVoices.length > 0) {
+          // Simple heuristic voice assignment based on character descriptions
+          voiceCasting = {};
+          const maleVoices = availableVoices.filter(v =>
+            v.labels?.gender === 'male' || v.name?.toLowerCase().includes('male') ||
+            ['adam', 'josh', 'sam', 'marcus', 'daniel', 'james', 'charlie', 'ethan', 'liam', 'george', 'callum', 'patrick', 'arnold', 'brian'].some(n => v.name?.toLowerCase().includes(n))
+          );
+          const femaleVoices = availableVoices.filter(v =>
+            v.labels?.gender === 'female' || v.name?.toLowerCase().includes('female') ||
+            ['rachel', 'domi', 'bella', 'elli', 'sarah', 'charlotte', 'alice', 'matilda', 'jessica', 'nicole', 'glinda', 'dorothy', 'emily', 'lily'].some(n => v.name?.toLowerCase().includes(n))
+          );
+          const neutralVoices = availableVoices.filter(v => !maleVoices.includes(v) && !femaleVoices.includes(v));
+
+          let maleIdx = 0, femaleIdx = 0, neutralIdx = 0;
+
+          for (const char of structure.characters) {
+            const descLower = (char.description || '').toLowerCase();
+            const isMale = /\b(man|male|boy|he|his|father|brother|uncle|grandfather|husband|son)\b/i.test(descLower);
+            const isFemale = /\b(woman|female|girl|she|her|mother|sister|aunt|grandmother|wife|daughter)\b/i.test(descLower);
+
+            let selectedVoice = null;
+            if (isMale && maleVoices.length > 0) {
+              selectedVoice = maleVoices[maleIdx % maleVoices.length];
+              maleIdx++;
+            } else if (isFemale && femaleVoices.length > 0) {
+              selectedVoice = femaleVoices[femaleIdx % femaleVoices.length];
+              femaleIdx++;
+            } else if (neutralVoices.length > 0) {
+              selectedVoice = neutralVoices[neutralIdx % neutralVoices.length];
+              neutralIdx++;
+            } else if (availableVoices.length > 0) {
+              // Fallback to any voice
+              selectedVoice = availableVoices[(maleIdx + femaleIdx + neutralIdx) % availableVoices.length];
+            }
+
+            if (selectedVoice) {
+              voiceCasting[char.id] = selectedVoice.voice_id;
+              console.log(`  ${char.id} → ${selectedVoice.name} (${selectedVoice.voice_id})`);
+            }
+          }
+
+          // Add narrator voice if any shots have narrator dialogue
+          const hasNarrator = shotsWithDescriptions.some(s =>
+            s.dialogue?.some(d => d.speaker === 'narrator') || s.vo
+          );
+          if (hasNarrator && availableVoices.length > 0) {
+            // Pick a neutral/documentary-style voice for narrator
+            const narratorVoice = neutralVoices[0] || availableVoices[0];
+            voiceCasting['narrator'] = narratorVoice.voice_id;
+            console.log(`  narrator → ${narratorVoice.name} (${narratorVoice.voice_id})`);
+          }
+        }
+      } catch (voiceErr) {
+        console.warn('Voice auto-assignment failed:', voiceErr.message);
+        // Continue without voice casting - assembly will use default
+      }
+    }
+
     // Generate project ID
     const slug = concept.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 30);
     const projectId = `${slug}_${Date.now()}`;
@@ -2174,7 +2305,9 @@ ${include_vo
       arc_description: structure.arc_description,
       style: style || null,
       characters: structure.characters || [],
-      shots: shotsWithDescriptions
+      environments: structure.environments || [],
+      shots: shotsWithDescriptions,
+      ...(voiceCasting && { voiceCasting })
     };
 
     console.log('Generated project:', JSON.stringify(project, null, 2));
@@ -3120,6 +3253,47 @@ app.post('/api/assemble', async (req, res) => {
           volume: 1,
           startTime: startTime
         });
+      }
+
+      // Process dialogue array (multi-character dialogue)
+      if (shot.dialogue && Array.isArray(shot.dialogue) && shot.dialogue.length > 0) {
+        const shotDuration = job.result.duration || shot.duration_target || 4;
+        const voiceCasting = project.voiceCasting || {};
+
+        // Calculate timing for lines without explicit timing
+        const WPM = 150;
+        const PAUSE_BETWEEN_SPEAKERS = 0.5;
+        let autoTime = 0;
+
+        for (const line of shot.dialogue) {
+          // Use explicit timing or auto-calculate
+          let lineTiming = line.timing;
+          if (lineTiming === undefined || lineTiming === null) {
+            lineTiming = autoTime;
+            const wordCount = line.text.split(/\s+/).length;
+            const duration = (wordCount / WPM) * 60;
+            autoTime += duration + PAUSE_BETWEEN_SPEAKERS;
+          }
+
+          // Look up voice_id from voiceCasting
+          const speakerVoiceId = voiceCasting[line.speaker] || voice_id;
+
+          if (!speakerVoiceId) {
+            console.warn(`No voice for speaker "${line.speaker}" - skipping line`);
+            continue;
+          }
+
+          audioLayers.push({
+            type: 'vo',
+            text: line.text,
+            voice_id: speakerVoiceId,
+            mood: line.mood || shot.mood,
+            tension: shot.tension,
+            energy: shot.energy,
+            volume: 1,
+            startTime: runningTime + lineTiming
+          });
+        }
       }
 
       runningTime += job.result.duration || shot.duration_target || 4;

@@ -399,6 +399,104 @@ function validateProductionRules(project) {
 }
 
 /**
+ * Validate dialogue - speaker references, timing, overlap detection
+ */
+function validateDialogue(project) {
+  const issues = [];
+  const warnings = [];
+
+  const shots = project.shots || [];
+  const voiceCasting = project.voiceCasting || {};
+  const characterIds = new Set((project.characters || []).map(c => c.id));
+
+  // Check if any shots have dialogue
+  const shotsWithDialogue = shots.filter(s => s.dialogue && Array.isArray(s.dialogue) && s.dialogue.length > 0);
+
+  if (shotsWithDialogue.length === 0) {
+    // No dialogue to validate
+    return { valid: true, issues, warnings };
+  }
+
+  // Warn if dialogue exists but no voiceCasting
+  if (Object.keys(voiceCasting).length === 0) {
+    warnings.push('Dialogue present but no voiceCasting defined - will use default voice');
+  }
+
+  // Validate each shot's dialogue
+  shotsWithDialogue.forEach(shot => {
+    const shotId = shot.shot_id || 'unknown';
+    const shotDuration = shot.duration_target || 8;
+
+    // Track timing for overlap detection
+    const lineTimings = [];
+
+    shot.dialogue.forEach((line, lineIdx) => {
+      // Check speaker exists
+      if (!line.speaker) {
+        issues.push(`Shot ${shotId}, line ${lineIdx}: missing speaker`);
+      } else if (line.speaker !== 'narrator' && !characterIds.has(line.speaker)) {
+        issues.push(`Shot ${shotId}, line ${lineIdx}: speaker "${line.speaker}" not in characters`);
+      }
+
+      // Check speaker has voice assigned
+      if (line.speaker && !voiceCasting[line.speaker] && Object.keys(voiceCasting).length > 0) {
+        warnings.push(`Shot ${shotId}: speaker "${line.speaker}" has no voice in voiceCasting`);
+      }
+
+      // Check text exists
+      if (!line.text || line.text.trim() === '') {
+        issues.push(`Shot ${shotId}, line ${lineIdx}: empty dialogue text`);
+      }
+
+      // Validate timing if specified
+      if (line.timing !== undefined && line.timing !== null) {
+        if (typeof line.timing !== 'number' || line.timing < 0) {
+          issues.push(`Shot ${shotId}, line ${lineIdx}: invalid timing ${line.timing}`);
+        } else if (line.timing >= shotDuration) {
+          warnings.push(`Shot ${shotId}, line ${lineIdx}: timing ${line.timing}s exceeds shot duration ${shotDuration}s`);
+        }
+
+        // Estimate line duration for overlap check (150 WPM)
+        const wordCount = (line.text || '').split(/\s+/).length;
+        const lineDuration = (wordCount / 150) * 60;
+        lineTimings.push({
+          lineIdx,
+          start: line.timing,
+          end: line.timing + lineDuration,
+          speaker: line.speaker
+        });
+      }
+
+      // Validate mood if specified
+      if (line.mood && !VALID_MOODS.includes(line.mood)) {
+        issues.push(`Shot ${shotId}, line ${lineIdx}: invalid mood "${line.mood}"`);
+      }
+    });
+
+    // Check for overlapping dialogue (only if timing is explicit)
+    if (lineTimings.length > 1) {
+      lineTimings.sort((a, b) => a.start - b.start);
+      for (let i = 1; i < lineTimings.length; i++) {
+        const prev = lineTimings[i - 1];
+        const curr = lineTimings[i];
+        if (curr.start < prev.end) {
+          warnings.push(`Shot ${shotId}: lines ${prev.lineIdx} and ${curr.lineIdx} may overlap (${prev.end.toFixed(1)}s vs ${curr.start.toFixed(1)}s)`);
+        }
+      }
+    }
+
+    // Check total dialogue fits in shot
+    const totalWords = shot.dialogue.reduce((sum, l) => sum + (l.text || '').split(/\s+/).length, 0);
+    const totalEstimatedDuration = (totalWords / 150) * 60 + (shot.dialogue.length - 1) * 0.5;
+    if (totalEstimatedDuration > shotDuration * 1.1) {
+      warnings.push(`Shot ${shotId}: dialogue may be too long (${totalEstimatedDuration.toFixed(1)}s estimated for ${shotDuration}s shot)`);
+    }
+  });
+
+  return { valid: issues.length === 0, issues, warnings };
+}
+
+/**
  * Run all validators and return comprehensive result
  */
 function validateProject(project) {
@@ -408,10 +506,11 @@ function validateProject(project) {
   const audio = validateAudioSettings(project);
   const transitions = validateTransitions(project);
   const production = validateProductionRules(project);
+  const dialogue = validateDialogue(project);
 
-  const totalIssues = [structure, narrative, feasibility, audio, transitions, production]
+  const totalIssues = [structure, narrative, feasibility, audio, transitions, production, dialogue]
     .reduce((sum, r) => sum + r.issues.length, 0);
-  const totalWarnings = [structure, narrative, feasibility, audio, transitions, production]
+  const totalWarnings = [structure, narrative, feasibility, audio, transitions, production, dialogue]
     .reduce((sum, r) => sum + r.warnings.length, 0);
 
   const criticalAreas = [];
@@ -419,6 +518,7 @@ function validateProject(project) {
   if (!narrative.valid) criticalAreas.push('narrative');
   if (!feasibility.valid) criticalAreas.push('feasibility');
   if (!audio.valid) criticalAreas.push('audio');
+  if (!dialogue.valid) criticalAreas.push('dialogue');
 
   return {
     valid: totalIssues === 0,
@@ -428,6 +528,7 @@ function validateProject(project) {
     audio,
     transitions,
     production,
+    dialogue,
     summary: {
       totalIssues,
       totalWarnings,
@@ -448,5 +549,6 @@ module.exports = {
   validateAudioSettings,
   validateTransitions,
   validateProductionRules,
+  validateDialogue,
   validateProject
 };
