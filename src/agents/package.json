@@ -10,6 +10,7 @@
     "produce:all": "npx tsx video-producer.ts --all"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@anthropic-ai/sdk": "^0.52.0"
   },
   "devDependencies": {

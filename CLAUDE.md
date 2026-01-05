@@ -106,43 +106,37 @@ Generates reference image + extracts immutable features (30-50 words including c
 
 ## Claude Agents
 
-TypeScript agents using the Anthropic SDK for specialized workflows.
+TypeScript agents for specialized workflows. Uses Claude Agent SDK for context-aware reasoning.
 
 ```bash
 cd src/agents && npm install
 ```
 
-### video-producer.ts (Autonomous)
+### video-producer-v2.ts (Recommended)
 
-End-to-end video production from raw ideas. Uses checkpoint/resume pattern for long-running Veo jobs.
+End-to-end video production with full project context. Reads CLAUDE.md to understand Veo limitations.
 
 ```bash
-# Add ideas as .txt or .md files
-echo "A lonely astronaut drifts through space" > data/slush-pile/astronaut.txt
-
-# Submit job (interprets idea, generates project, submits to Veo, checkpoints)
-npx tsx video-producer.ts
-
-# Check status of in-progress jobs
-npx tsx video-producer.ts --status
-
-# Run again to check if jobs complete → assembles video
-npx tsx video-producer.ts
+npx tsx video-producer-v2.ts                              # Process next idea
+npx tsx video-producer-v2.ts idea.txt                     # Specific file
+npx tsx video-producer-v2.ts --instructions "Be minimal"  # With guidance
 ```
 
-**Workflow:**
-1. First run: interprets idea, submits Veo jobs, saves checkpoint to `in-progress/`
-2. Subsequent runs: checks job status, assembles when complete
-3. Completed videos go to `data/exports/`, idea files move to `done/`
+### video-producer.ts (Legacy)
 
-The agent autonomously decides: duration, arc type, style, production_style, include_vo, character/environment locking, and voice selection.
+Original agent without Agent SDK context. Still works but doesn't read CLAUDE.md.
 
 ### Other Agents
 
-- `concept-reviewer.ts` - Review concepts for clarity and AI feasibility
-- `example.ts` - Basic SDK usage demonstration
+- `project-reviewer.ts` - Critique producer decisions (structure, feasibility)
+- `concept-reviewer.ts` - Review raw concepts before production
+- `system-refiner.ts` - Autonomous optimization of interpretation prompts
 
-Create new agents by adding `.ts` files to `src/agents/`.
+```bash
+npx tsx project-reviewer.ts                    # Review most recent project
+npx tsx system-refiner.ts                      # Run optimization cycle
+npx tsx system-refiner.ts --hints "improve feasibility"
+```
 
 ## Known Veo Limitations
 
