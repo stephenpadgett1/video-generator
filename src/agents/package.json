@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "example": "npx tsx example.ts"
+    "example": "npx tsx example.ts",
+    "produce": "npx tsx video-producer.ts",
+    "produce:all": "npx tsx video-producer.ts --all"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0"

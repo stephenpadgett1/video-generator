@@ -112,16 +112,37 @@ TypeScript agents using the Anthropic SDK for specialized workflows.
 cd src/agents && npm install
 ```
 
-**Available agents:**
-- `concept-reviewer.ts` - Review video concepts for clarity and AI feasibility
-- `example.ts` - Basic SDK usage demonstration
+### video-producer.ts (Autonomous)
+
+End-to-end video production from raw ideas. Uses checkpoint/resume pattern for long-running Veo jobs.
 
 ```bash
-# Run an agent
-npx tsx concept-reviewer.ts "A robot walks through rain"
+# Add ideas as .txt or .md files
+echo "A lonely astronaut drifts through space" > data/slush-pile/astronaut.txt
+
+# Submit job (interprets idea, generates project, submits to Veo, checkpoints)
+npx tsx video-producer.ts
+
+# Check status of in-progress jobs
+npx tsx video-producer.ts --status
+
+# Run again to check if jobs complete → assembles video
+npx tsx video-producer.ts
 ```
 
-Create new agents by adding `.ts` files to `src/agents/`. See existing agents for patterns.
+**Workflow:**
+1. First run: interprets idea, submits Veo jobs, saves checkpoint to `in-progress/`
+2. Subsequent runs: checks job status, assembles when complete
+3. Completed videos go to `data/exports/`, idea files move to `done/`
+
+The agent autonomously decides: duration, arc type, style, production_style, include_vo, character/environment locking, and voice selection.
+
+### Other Agents
+
+- `concept-reviewer.ts` - Review concepts for clarity and AI feasibility
+- `example.ts` - Basic SDK usage demonstration
+
+Create new agents by adding `.ts` files to `src/agents/`.
 
 ## Known Veo Limitations
 
