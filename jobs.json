@@ -1,5 +1,105 @@
 [
   {
+    "id": "job_1767741890754_0kycsg",
+    "type": "veo-generate",
+    "status": "complete",
+    "input": {
+      "prompt": "A middle-aged Caucasian man with a medium build, shoulder-length wavy dark brown and gray hair, and a salt-and-pepper beard wearing an unzipped olive green utility jacket over a beige henley shirt, dark olive cargo pants, and tan hiking boots stands at the center of a junction where multiple asphalt roads diverge across rolling hills of golden textured fields. Wide establishing shot from ground level, camera positioned directly in front of him as he faces forward with a calm, knowing expression, his eyes peaceful and content. His posture is relaxed with shoulders dropped, weight evenly distributed, radiating quiet fulfillment. Golden hour sunlight bathes the entire landscape in warm amber tones, creating long shadows across the winding paths that stretch into the distance. The low sun casts a gentle rim light around his silhouette while soft, diffused light illuminates his serene face. Multiple roads curve away through the undulating hills covered in dry golden grasses that sway gently in a light breeze. Green verges line the dark asphalt paths. The sky above shows deep blue transitioning to warm orange near the horizon. Camera remains completely static for the full duration, holding this wide vista that captures both the traveler's centered stillness and the expansive possibilities before him. The warm color palette dominated by golds and ambers creates a sense of peace and completion.",
+      "aspectRatio": "9:16",
+      "durationSeconds": 5,
+      "referenceImagePath": "/generated-images/character_sagittarius_traveler_base.png"
+    },
+    "result": {
+      "operationName": "projects/gen-lang-client-0137184346/locations/us-central1/publishers/google/models/veo-3.1-generate-preview/operations/18657e73-29b5-4f2b-876d-4523f33643d7",
+      "filename": "veo_1767741933671_yh0cpr.mp4",
+      "path": "/video/veo_1767741933671_yh0cpr.mp4",
+      "duration": 4
+    },
+    "error": null,
+    "createdAt": "2026-01-06T23:24:50.754Z",
+    "updatedAt": "2026-01-06T23:25:33.724Z"
+  },
+  {
+    "id": "job_1767741879241_z23qqj",
+    "type": "veo-generate",
+    "status": "complete",
+    "input": {
+      "prompt": "A middle-aged Caucasian man with a medium build, shoulder-length wavy dark brown and gray hair, and a salt-and-pepper beard, wearing an unzipped olive green utility jacket over a beige henley shirt, dark olive cargo pants, and tan hiking boots, walks steadily along a forest path. Smooth tracking shot from behind, following at shoulder height as he moves through tall trees with easy, familiar strides. Golden hour sunlight filters through the dense canopy above, creating dappled patterns of warm light across his back and the forest floor. He tilts his head upward to appreciate the canopy, sunbeams catching in his wavy hair. The camera maintains a constant distance, gliding through the lush foliage as shafts of hazy, golden backlight pierce through gaps in the leaves, creating a dreamy, ethereal atmosphere. Soft shadows and warm highlights paint the scene in amber and bronze tones. The path ahead hints at a classical stone archway in the distance through the trees.",
+      "aspectRatio": "9:16",
+      "durationSeconds": 4,
+      "referenceImagePath": "/generated-images/character_sagittarius_traveler_base.png"
+    },
+    "result": {
+      "operationName": "projects/gen-lang-client-0137184346/locations/us-central1/publishers/google/models/veo-3.1-generate-preview/operations/db2bea96-05a6-43e9-a614-86d35aa48930",
+      "filename": "veo_1767741934439_0y9cze.mp4",
+      "path": "/video/veo_1767741934439_0y9cze.mp4",
+      "duration": 4
+    },
+    "error": null,
+    "createdAt": "2026-01-06T23:24:39.241Z",
+    "updatedAt": "2026-01-06T23:25:34.496Z"
+  },
+  {
+    "id": "job_1767741871417_6ugbo2",
+    "type": "veo-generate",
+    "status": "complete",
+    "input": {
+      "prompt": "A middle-aged Caucasian man with a medium build, shoulder-length wavy dark brown and gray hair, and a salt-and-pepper beard, wearing an unzipped olive green utility jacket over a beige henley shirt, dark olive cargo pants, and tan hiking boots, maintaining a neutral, direct expression, stands on a modern rooftop with large grey stone pavers and metal railings at golden hour. Medium shot capturing him as he gazes out over the sprawling cityscape below, where thousands of windows begin to illuminate in warm amber light against the deepening twilight. The camera starts at his eye level, then begins a slow, majestic orbit around him, revealing the full panorama of the vertical city stretching endlessly in all directions. Wind catches his open jacket and hair, creating subtle movement. The warm orange sunset glow on the horizon bathes him in heroic golden light, while cool blue twilight fills the sky above, creating a dramatic color contrast. Building lights twinkle like stars below, and distant skyscrapers pierce the glowing atmosphere. The camera movement is smooth and deliberate, slightly low angle to emphasize his confident stance against the vast urban landscape. Natural sound includes the gentle wind, distant city ambience, and the subtle rustle of his clothing in the breeze.",
+      "aspectRatio": "9:16",
+      "durationSeconds": 5,
+      "referenceImagePath": "/generated-images/character_sagittarius_traveler_base.png"
+    },
+    "result": {
+      "operationName": "projects/gen-lang-client-0137184346/locations/us-central1/publishers/google/models/veo-3.1-generate-preview/operations/f03900b2-2aa8-4f01-abbe-19587cc5c4d8",
+      "filename": "veo_1767741913615_yyazn2.mp4",
+      "path": "/video/veo_1767741913615_yyazn2.mp4",
+      "duration": 4
+    },
+    "error": null,
+    "createdAt": "2026-01-06T23:24:31.417Z",
+    "updatedAt": "2026-01-06T23:25:13.663Z"
+  },
+  {
+    "id": "job_1767741861755_muo336",
+    "type": "veo-generate",
+    "status": "complete",
+    "input": {
+      "prompt": "A middle-aged Caucasian man with a medium build, shoulder-length wavy dark brown and gray hair, and a salt-and-pepper beard, wearing an unzipped olive green utility jacket over a beige henley shirt, dark olive cargo pants, walks barefoot along a dramatic black sand beach at sunset. Medium-wide shot tracking alongside him at walking pace as he moves with relaxed but purposeful strides toward the distant curve of the shoreline. Golden hour sunlight bathes the scene in warm, honeyed tones, creating a luminous rim light around his silhouette. Ocean waves roll onto the dark sand beside him, their spray catching the golden light like scattered diamonds. Steep dark cliffs and distinctive sea stacks rise dramatically from the ocean in the background, silhouetted against the glowing sky. The low-angle sunlight creates long shadows across the wet sand, while gentle lens flares add to the hopeful, uplifting atmosphere. His bare feet leave impressions in the damp sand as he walks, the camera maintaining a steady lateral tracking movement. The warm palette contrasts beautifully with the dark volcanic sand and basalt formations, creating a cinematic epic landscape bathed in the magical light of golden hour.",
+      "aspectRatio": "9:16",
+      "durationSeconds": 5,
+      "referenceImagePath": "/generated-images/character_sagittarius_traveler_base.png"
+    },
+    "result": {
+      "operationName": "projects/gen-lang-client-0137184346/locations/us-central1/publishers/google/models/veo-3.1-generate-preview/operations/26bba459-b97e-429c-b882-dea9d97531ed",
+      "filename": "veo_1767741914566_gndd9p.mp4",
+      "path": "/video/veo_1767741914566_gndd9p.mp4",
+      "duration": 4
+    },
+    "error": null,
+    "createdAt": "2026-01-06T23:24:21.755Z",
+    "updatedAt": "2026-01-06T23:25:14.613Z"
+  },
+  {
+    "id": "job_1767741853006_j6i1jb",
+    "type": "veo-generate",
+    "status": "complete",
+    "input": {
+      "prompt": "A middle-aged Caucasian man with a medium build, shoulder-length wavy dark brown and gray hair, and a salt-and-pepper beard, wearing an unzipped olive green utility jacket over a beige henley shirt, dark olive cargo pants, and tan hiking boots, maintaining a neutral, direct expression, stands alone on a narrow rocky ridgeline at the summit of a sharp mountain peak. Wide shot capturing the figure small against the vast landscape. Golden hour sunlight bathes the entire scene in warm amber tones, creating long shadows across the rocky terrain and grassy slopes below. The man stands still, gazing out at endless mountain peaks that stretch to the horizon, layered in atmospheric perspective from warm golden foregrounds to cool blue distant ranges. A gentle breeze moves his shoulder-length hair and open jacket subtly. The camera executes an extremely slow, almost imperceptible push forward toward the solitary figure over 5 seconds, maintaining the wide framing throughout. The composition emphasizes the immense scale of the landscape, with the traveler centered but dwarfed by the surrounding peaks. Soft, even lighting creates balanced exposure across the frame, with the low-angle sun providing natural rim lighting on the figure and ridgeline. The scene maintains a contemplative stillness despite the subtle movement of wind and camera.",
+      "aspectRatio": "9:16",
+      "durationSeconds": 5,
+      "referenceImagePath": "/generated-images/character_sagittarius_traveler_base.png"
+    },
+    "result": {
+      "operationName": "projects/gen-lang-client-0137184346/locations/us-central1/publishers/google/models/veo-3.1-generate-preview/operations/aca1c095-44db-4d2f-b335-b58bf535c93e",
+      "filename": "veo_1767741905686_b61f0e.mp4",
+      "path": "/video/veo_1767741905686_b61f0e.mp4",
+      "duration": 4
+    },
+    "error": null,
+    "createdAt": "2026-01-06T23:24:13.006Z",
+    "updatedAt": "2026-01-06T23:25:05.995Z"
+  },
+  {
     "id": "job_1767669679956_dfi9iu",
     "type": "veo-generate",
     "status": "complete",
