@@ -281,6 +281,59 @@ npx tsx cut-point-analyzer.ts project.json --dry-run    # Don't save annotations
 
 **How it works:** Calls `/api/audio-timeline` which combines ffmpeg silencedetect with Whisper transcription. FFmpeg provides accurate pause detection (Whisper compresses silence gaps). Returns trim recommendations based on speech segment boundaries.
 
+
+### Unified Clip Analysis
+
+Comprehensive analysis combining visual scene detection, audio analysis, and prompt context to make intelligent editing decisions.
+
+**Endpoint:** `POST /api/analyze-clip-unified`
+
+```bash
+curl -X POST http://localhost:3000/api/analyze-clip-unified \
+  -H "Content-Type: application/json" \
+  -d '{"videoPath": "my_clip.mp4", "context": {"dialogue": [...]}}'
+```
+
+**Analysis signals:**
+| Signal | Source | Purpose |
+|--------|--------|---------|
+| Scene changes | ffmpeg `select='gt(scene,0.4)'` | Visual discontinuities |
+| Speech segments | Whisper + silence detection | Audio activity |
+| Silences | ffmpeg silencedetect | Natural cut points |
+| Context match | Prompt/dialogue comparison | Validate generated content |
+
+**Correlations detected:**
+- `scene_change_at_silence` - Natural cut point (high confidence)
+- `scene_matches_speech_boundary` - Audio/visual alignment
+
+**Anomalies detected:**
+| Type | Trigger | Severity |
+|------|---------|----------|
+| `scene_change_mid_word` | Scene change during speech | warning |
+| `entrance_with_speech` | Scene + speech in first 0.5s | warning |
+| `dead_time_detected` | No activity at clip end | info |
+| `visual_glitch` | 3+ scene changes in 0.5s | warning |
+| `dialogue_mismatch` | <50% word match | warning |
+
+**Response includes:**
+- `scenes.changes[]` - Timestamps of visual scene changes
+- `audio.speech_segments[]` - Where speech occurs
+- `reconciled.correlations[]` - Audio/visual alignment patterns
+- `reconciled.anomalies[]` - Problems detected
+- `reconciled.edit_suggestions[]` - Recommended actions
+- `summary.recommended_action` - 'use_as_is', 'trim', 'review', or 'regenerate'
+- `summary.trim_recommendation` - Suggested trim points with reasoning
+
+**Auto-analyze with edit:** `POST /api/edit/auto-analyze`
+```json
+{
+  "job_id": "job_123",
+  "apply_suggestions": true,
+  "context": { "dialogue": [...] }
+}
+```
+Runs unified analysis and optionally creates trim variation automatically.
+
 ### Clip Editor
 
 Reads cut-point-analyzer annotations and automatically creates trimmed variations. Works with the edit system to produce rendered video files.

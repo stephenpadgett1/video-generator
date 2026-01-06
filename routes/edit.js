@@ -392,6 +392,120 @@ router.get('/', (req, res) => {
   res.json({ edits });
 });
 
+// POST /api/edit/auto-analyze - Run unified analysis and optionally apply suggestions
+router.post('/auto-analyze', async (req, res) => {
+  const { job_id, apply_suggestions = false, context = {} } = req.body;
+
+  if (!job_id) {
+    return res.status(400).json({ error: 'job_id is required' });
+  }
+
+  const videoPath = getVideoPath(job_id);
+  if (!videoPath || !fs.existsSync(videoPath)) {
+    return res.status(404).json({ error: `Video not found for job ${job_id}` });
+  }
+
+  try {
+    // Call unified analysis endpoint
+    const analysisResponse = await fetch('http://localhost:3000/api/analyze-clip-unified', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoPath, context })
+    });
+
+    if (!analysisResponse.ok) {
+      const err = await analysisResponse.text();
+      return res.status(500).json({ error: `Analysis failed: ${err}` });
+    }
+
+    const analysis = await analysisResponse.json();
+
+    // Ensure edit folder exists
+    const editDir = getEditDir(job_id);
+    if (!fs.existsSync(path.join(editDir, 'manifest.json'))) {
+      // Initialize edit folder
+      fs.mkdirSync(editDir, { recursive: true });
+      const sourceInEdit = path.join(editDir, 'source.mp4');
+      fs.copyFileSync(videoPath, sourceInEdit);
+
+      const manifest = {
+        job_id,
+        source: {
+          path: path.relative(editDir, videoPath),
+          duration: analysis.clip_duration
+        },
+        context: context || {},
+        analysis: null,
+        variations: [],
+        selected: null,
+        status: 'pending',
+        created_at: new Date().toISOString()
+      };
+      fs.writeFileSync(path.join(editDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    }
+
+    // Store analysis in manifest
+    const manifest = loadManifest(job_id);
+    manifest.analysis = {
+      unified: analysis,
+      analyzed_at: new Date().toISOString()
+    };
+    saveManifest(job_id, manifest);
+
+    // Apply suggestions if requested
+    let appliedVariation = null;
+    if (apply_suggestions && analysis.summary.trim_recommendation) {
+      const trim = analysis.summary.trim_recommendation;
+
+      // Create trim variation
+      const sourceFile = path.join(editDir, 'source.mp4');
+      const start = trim.trim_start || 0;
+      const end = trim.trim_end || manifest.source.duration;
+      const duration = end - start;
+
+      const num = manifest.variations.length + 1;
+      const varId = 'v' + String(num).padStart(3, '0');
+      const filename = `${varId}_trim.mp4`;
+      const outputPath = path.join(editDir, filename);
+
+      const cmd = `ffmpeg -y -ss ${start} -i "${sourceFile}" -t ${duration} -c copy "${outputPath}"`;
+      execSync(cmd, { stdio: 'pipe' });
+
+      // Get actual duration
+      const durationCmd = `ffprobe -v error -show_entries format=duration -of csv=p=0 "${outputPath}"`;
+      const actualDuration = parseFloat(execSync(durationCmd, { encoding: 'utf8' }).trim());
+
+      appliedVariation = {
+        id: varId,
+        filename,
+        edits: {
+          trim_start: start,
+          trim_end: end
+        },
+        duration: actualDuration,
+        created_at: new Date().toISOString(),
+        created_by: 'auto-analyze',
+        notes: `Auto-trim: ${analysis.summary.trim_recommendation.based_on.join('+')} analysis`
+      };
+
+      manifest.variations.push(appliedVariation);
+      manifest.selected = varId;
+      manifest.status = 'approved';
+      manifest.selected_at = new Date().toISOString();
+      saveManifest(job_id, manifest);
+    }
+
+    res.json({
+      analysis,
+      manifest: loadManifest(job_id),
+      applied_variation: appliedVariation
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Helper function for assembly to get selected video path
 function getSelectedVideoPath(jobId) {
   const manifest = loadManifest(jobId);
