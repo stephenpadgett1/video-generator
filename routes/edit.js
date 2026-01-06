@@ -124,7 +124,7 @@ router.post('/start', (req, res) => {
 
 // POST /api/edit/trim - Create trimmed variation
 router.post('/trim', (req, res) => {
-  const { job_id, trim_start, trim_end, notes } = req.body;
+  const { job_id, trim_start, trim_end, notes, precise } = req.body;
 
   if (!job_id) {
     return res.status(400).json({ error: 'job_id is required' });
@@ -154,9 +154,16 @@ router.post('/trim', (req, res) => {
 
   try {
     // ffmpeg trim: -ss for start, -t for duration
+    // precise: true = re-encode for frame-accurate cuts (slower)
+    // precise: false/undefined = stream copy, snaps to keyframes (fast)
     const duration = end - start;
-    const cmd = `ffmpeg -y -ss ${start} -i "${sourceFile}" -t ${duration} -c copy "${outputPath}"`;
-    execSync(cmd, { stdio: 'pipe' });
+    let cmd;
+    if (precise) {
+      cmd = `ffmpeg -y -ss ${start} -i "${sourceFile}" -t ${duration} -c:v libx264 -preset fast -crf 23 -c:a aac "${outputPath}"`;
+    } else {
+      cmd = `ffmpeg -y -ss ${start} -i "${sourceFile}" -t ${duration} -c copy -avoid_negative_ts make_zero -reset_timestamps 1 "${outputPath}"`;
+    }
+    execSync(cmd, { stdio: "pipe" });
 
     // Get actual output duration
     const actualDuration = getVideoDuration(outputPath);
@@ -167,7 +174,8 @@ router.post('/trim', (req, res) => {
       filename,
       edits: {
         trim_start: start,
-        trim_end: end
+        trim_end: end,
+        precise: !!precise
       },
       duration: actualDuration,
       created_at: new Date().toISOString(),
@@ -394,7 +402,7 @@ router.get('/', (req, res) => {
 
 // POST /api/edit/auto-analyze - Run unified analysis and optionally apply suggestions
 router.post('/auto-analyze', async (req, res) => {
-  const { job_id, apply_suggestions = false, context = {} } = req.body;
+  const { job_id, apply_suggestions = false, context = {}, precise = true } = req.body;
 
   if (!job_id) {
     return res.status(400).json({ error: 'job_id is required' });
@@ -468,7 +476,12 @@ router.post('/auto-analyze', async (req, res) => {
       const filename = `${varId}_trim.mp4`;
       const outputPath = path.join(editDir, filename);
 
-      const cmd = `ffmpeg -y -ss ${start} -i "${sourceFile}" -t ${duration} -c copy "${outputPath}"`;
+      let cmd;
+      if (precise) {
+        cmd = `ffmpeg -y -ss ${start} -i "${sourceFile}" -t ${duration} -c:v libx264 -preset fast -crf 23 -c:a aac "${outputPath}"`;
+      } else {
+        cmd = `ffmpeg -y -ss ${start} -i "${sourceFile}" -t ${duration} -c copy -avoid_negative_ts make_zero -reset_timestamps 1 "${outputPath}"`;
+      }
       execSync(cmd, { stdio: 'pipe' });
 
       // Get actual duration
@@ -480,7 +493,8 @@ router.post('/auto-analyze', async (req, res) => {
         filename,
         edits: {
           trim_start: start,
-          trim_end: end
+          trim_end: end,
+          precise: !!precise
         },
         duration: actualDuration,
         created_at: new Date().toISOString(),
