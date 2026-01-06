@@ -46,6 +46,7 @@ router.post('/', async (req, res) => {
     form.append('model', 'whisper-1');
     form.append('response_format', 'verbose_json');
     form.append('timestamp_granularities[]', 'segment');
+    form.append('timestamp_granularities[]', 'word');
 
     const response = await new Promise((resolve, reject) => {
       form.submit({
@@ -75,6 +76,11 @@ router.post('/', async (req, res) => {
         start: s.start,
         end: s.end,
         text: s.text.trim()
+      })),
+      words: (result.words || []).map(w => ({
+        start: w.start,
+        end: w.end,
+        word: w.word
       })),
       full_text: result.text,
       duration: result.duration
