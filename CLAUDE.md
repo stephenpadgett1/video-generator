@@ -213,12 +213,60 @@ Original agent without Agent SDK context. Still works but doesn't read CLAUDE.md
 - `project-reviewer.ts` - Critique producer decisions (structure, feasibility)
 - `concept-reviewer.ts` - Review raw concepts before production
 - `system-refiner.ts` - Autonomous optimization of interpretation prompts
+- `clip-validator.ts` - Automated clip validation using ffprobe
 
 ```bash
 npx tsx project-reviewer.ts                    # Review most recent project
 npx tsx system-refiner.ts                      # Run optimization cycle
 npx tsx system-refiner.ts --hints "improve feasibility"
+npx tsx clip-validator.ts project.json         # Validate generated clips
 ```
+
+### Clip Validator
+
+Runs automated checks on generated video clips and writes structured annotations to project JSON:
+
+```bash
+npx tsx clip-validator.ts data/projects/my_project.json
+npx tsx clip-validator.ts --project-id my_project
+```
+
+**Checks performed:**
+| Check | Category | Severity |
+|-------|----------|----------|
+| Video file exists | completeness | error |
+| Duration matches target ±0.5s | timing | info/warning |
+| Has audio track | audio | warning |
+| Audio not silent (dialogue shots) | audio | warning |
+| Resolution/aspect ratio | visual | info |
+
+**Output:** Annotations are saved to the project JSON for other agents to consume. Exit code 1 if any errors block assembly.
+
+## Agent Annotations
+
+Agents communicate through structured annotations stored in project JSON:
+
+```typescript
+interface Annotation {
+  id: string;                    // "ann_" + timestamp + random
+  agent: string;                 // Agent that created it
+  timestamp: string;             // ISO date
+  target: {
+    shot_id: string;
+    take_index?: number;         // For multi-take shots
+    frame?: number;              // Seconds into clip (future)
+  };
+  type: "issue" | "passed";
+  category: "timing" | "audio" | "visual" | "completeness" | "continuity";
+  message: string;
+  severity: "info" | "warning" | "error";
+  resolved: boolean;
+  resolved_by?: string;
+  resolution_note?: string;
+}
+```
+
+**Escalation:** Agents decide based on severity - errors block, warnings allow with flag, info logged only.
 
 
 

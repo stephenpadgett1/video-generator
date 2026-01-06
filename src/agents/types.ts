@@ -125,3 +125,33 @@ export interface VoiceSelection {
   name: string;
   reasoning: string;
 }
+
+// Agent annotation system - for inter-agent communication
+export type AnnotationType = 'issue' | 'passed';
+export type AnnotationCategory = 'timing' | 'audio' | 'visual' | 'completeness' | 'continuity';
+export type AnnotationSeverity = 'info' | 'warning' | 'error';
+
+export interface AnnotationTarget {
+  shot_id: string;
+  take_index?: number;           // For multi-take shots
+  frame?: number;                // Seconds into clip (future use)
+}
+
+export interface Annotation {
+  id: string;                    // "ann_" + timestamp + random
+  agent: string;                 // Agent that created the annotation
+  timestamp: string;             // ISO date
+  target: AnnotationTarget;
+  type: AnnotationType;
+  category: AnnotationCategory;
+  message: string;
+  severity: AnnotationSeverity;
+  resolved: boolean;
+  resolved_by?: string;          // Agent or human who resolved
+  resolution_note?: string;
+}
+
+// Extended project with annotations
+export interface AnnotatedProject extends Project {
+  annotations?: Annotation[];
+}
