@@ -1447,7 +1447,8 @@ async function generateVeoPromptInternal(description, durationSeconds, style, cl
     previousTakeDescription,
     additionalContext,
     mood,
-    productionRules
+    productionRules,
+    dialogue
   } = options;
 
   // Build production constraint prefix if rules are specified
@@ -1471,6 +1472,25 @@ The emotional tone is "${mood}". Incorporate these visual qualities: ${MOOD_VISU
 Ensure lighting, color palette, and composition support this mood.`;
   }
 
+  // Build dialogue guidance for Veo native speech generation
+  let dialogueGuidance = '';
+  if (dialogue && dialogue.length > 0) {
+    const lines = dialogue.map(d =>
+      `- ${d.speaker.toUpperCase()} (${d.voiceDescription}, ${d.mood} tone): "${d.text}"`
+    ).join('\n');
+
+    dialogueGuidance = `
+SPOKEN DIALOGUE (characters speak these lines on camera with Veo native audio):
+${lines}
+
+For dialogue shots:
+- Characters must speak these exact lines with natural lip movement and voice
+- Match voice tone to the mood indicated
+- Frame speakers appropriately - close-up for intimate lines, wider for exchanges
+- Include natural pauses, gestures, and reactions between lines
+- Describe voice qualities (warm, tense, hushed, etc.) to guide Veo's audio generation`;
+  }
+
   const systemPrompt = `You are a cinematographer writing prompts for Veo, an AI video generator.
 
 Given the action description and context, write a detailed video generation prompt that:
@@ -1487,7 +1507,7 @@ If a CHARACTER description is provided in CONTEXT, you MUST:
 2. Include ALL details verbatim: physical features, specific clothing colors/items, expression
 3. Do NOT paraphrase or omit any character details - copy them exactly
 4. Example: If context says "East Asian woman, 30s, shoulder-length black hair, white blouse, navy pants" your prompt MUST begin with those exact details
-${moodGuidance}${productionConstraintGuidance}
+${moodGuidance}${productionConstraintGuidance}${dialogueGuidance}
 Output only the prompt text, no JSON or explanation.`;
 
   let userMessage = `ACTION: ${description}`;
@@ -2529,6 +2549,23 @@ Return a JSON array of description strings, one for each shot in order.`;
       if (environmentContext) additionalContextParts.push(environmentContext);
       const combinedContext = additionalContextParts.length > 0 ? additionalContextParts.join('\n\n') : null;
 
+      // Build dialogue context for Veo native speech generation
+      let dialogueContext = null;
+      if (shot.dialogue && Array.isArray(shot.dialogue) && shot.dialogue.length > 0) {
+        dialogueContext = shot.dialogue.map(line => {
+          const char = characterMap[line.speaker];
+          const voiceDesc = char?.description || line.speaker;
+          const lineMood = line.mood || shot.mood;
+          return {
+            speaker: line.speaker,
+            text: line.text,
+            mood: lineMood,
+            voiceDescription: voiceDesc
+          };
+        });
+        console.log(`Shot ${shot.shot_id} has ${dialogueContext.length} dialogue lines for Veo`);
+      }
+
       // Generate Veo prompt from description
       const veoPrompt = await generateVeoPromptInternal(
         shot.description,
@@ -2539,7 +2576,8 @@ Return a JSON array of description strings, one for each shot in order.`;
           aspectRatio,
           additionalContext: combinedContext,
           mood: shot.mood,  // Pass mood for atmospheric guidance
-          productionRules: resolvedProductionRules  // Pass production constraints
+          productionRules: resolvedProductionRules,  // Pass production constraints
+          dialogue: dialogueContext  // Pass dialogue for native Veo speech
         }
       );
 
@@ -3255,45 +3293,10 @@ app.post('/api/assemble', async (req, res) => {
         });
       }
 
-      // Process dialogue array (multi-character dialogue)
+      // Skip dialogue array - Veo generates native audio with lip sync
+      // ElevenLabs TTS is only used for 'vo' (narration), not character dialogue
       if (shot.dialogue && Array.isArray(shot.dialogue) && shot.dialogue.length > 0) {
-        const shotDuration = job.result.duration || shot.duration_target || 4;
-        const voiceCasting = project.voiceCasting || {};
-
-        // Calculate timing for lines without explicit timing
-        const WPM = 150;
-        const PAUSE_BETWEEN_SPEAKERS = 0.5;
-        let autoTime = 0;
-
-        for (const line of shot.dialogue) {
-          // Use explicit timing or auto-calculate
-          let lineTiming = line.timing;
-          if (lineTiming === undefined || lineTiming === null) {
-            lineTiming = autoTime;
-            const wordCount = line.text.split(/\s+/).length;
-            const duration = (wordCount / WPM) * 60;
-            autoTime += duration + PAUSE_BETWEEN_SPEAKERS;
-          }
-
-          // Look up voice_id from voiceCasting
-          const speakerVoiceId = voiceCasting[line.speaker] || voice_id;
-
-          if (!speakerVoiceId) {
-            console.warn(`No voice for speaker "${line.speaker}" - skipping line`);
-            continue;
-          }
-
-          audioLayers.push({
-            type: 'vo',
-            text: line.text,
-            voice_id: speakerVoiceId,
-            mood: line.mood || shot.mood,
-            tension: shot.tension,
-            energy: shot.energy,
-            volume: 1,
-            startTime: runningTime + lineTiming
-          });
-        }
+        console.log(`Skipping ElevenLabs for shot ${shot.shot_id} - using Veo native dialogue (${shot.dialogue.length} lines)`);
       }
 
       runningTime += job.result.duration || shot.duration_target || 4;
@@ -3495,6 +3498,17 @@ app.post('/api/assemble', async (req, res) => {
       return 'cut'; // Default for changes between 0.2 and 0.4
     };
 
+    // Detect aspect ratio from first video to determine output dimensions
+    const firstVideoPath = path.join(__dirname, 'data', shots[0].videoPath.replace(/^\//, ''));
+    const probeCmd = `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${firstVideoPath}"`;
+    const dimensions = execSync(probeCmd, { encoding: 'utf8' }).trim().split(',');
+    const srcWidth = parseInt(dimensions[0]);
+    const srcHeight = parseInt(dimensions[1]);
+    const isLandscape = srcWidth > srcHeight;
+    const targetWidth = isLandscape ? 1920 : 1080;
+    const targetHeight = isLandscape ? 1080 : 1920;
+    console.log(`Detected ${isLandscape ? 'landscape' : 'portrait'} (${srcWidth}x${srcHeight}), targeting ${targetWidth}x${targetHeight}`);
+
     // Process each shot - normalize to same format and mix in VO if present
     const normalizedPaths = [];
     for (let i = 0; i < shots.length; i++) {
@@ -3517,7 +3531,7 @@ app.post('/api/assemble', async (req, res) => {
         ffmpegCmd += ` -to ${shot.trimEnd}`;
       }
 
-      ffmpegCmd += ` -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"`;
+      ffmpegCmd += ` -vf "scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2,fps=30"`;
       ffmpegCmd += ` -c:v libx264 -preset fast -crf 23`;
       ffmpegCmd += ` -c:a aac -ar 44100 -ac 2`;
       ffmpegCmd += ` -pix_fmt yuv420p`;
