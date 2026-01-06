@@ -229,6 +229,7 @@ Runs automated checks on generated video clips and writes structured annotations
 ```bash
 npx tsx clip-validator.ts data/projects/my_project.json
 npx tsx clip-validator.ts --project-id my_project
+npx tsx clip-validator.ts project.json --visual   # Generate annotated video
 ```
 
 **Checks performed:**
@@ -241,6 +242,11 @@ npx tsx clip-validator.ts --project-id my_project
 | Resolution/aspect ratio | visual | info |
 
 **Output:** Annotations are saved to the project JSON for other agents to consume. Exit code 1 if any errors block assembly.
+
+**Visual mode (`--visual`):** Assembles all clips into a single video with annotations overlaid:
+- Top-left: Shot ID, take number, agent name
+- Bottom: Validation results color-coded (green=OK, yellow=WARN, red=ERR)
+- Output: `data/exports/{project_id}_validated.mp4`
 
 ## Agent Annotations
 

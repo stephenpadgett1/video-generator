@@ -17,9 +17,10 @@
  */
 
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, resolve, basename } from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { dirname, resolve, basename, join } from 'path';
 import { fileURLToPath } from 'url';
+import { tmpdir } from 'os';
 import type {
   AnnotatedProject,
   Annotation,
@@ -32,6 +33,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const VIDEO_DIR = resolve(__dirname, '../../data/video');
 const PROJECTS_DIR = resolve(__dirname, '../../data/projects');
 const JOBS_FILE = resolve(__dirname, '../../jobs.json');
+const EXPORTS_DIR = resolve(__dirname, '../../data/exports');
 
 // Tolerance for duration matching
 const DURATION_TOLERANCE = 0.5;
@@ -392,6 +394,197 @@ function loadProject(pathOrId: string): { project: AnnotatedProject; path: strin
   return { project: JSON.parse(content), path: projectPath };
 }
 
+// Visual output types
+interface ClipInfo {
+  shotId: string;
+  takeIndex?: number;
+  videoPath: string;
+  annotations: Annotation[];
+}
+
+function getSeverityColor(severity: AnnotationSeverity): string {
+  switch (severity) {
+    case 'error': return 'red';
+    case 'warning': return 'yellow';
+    case 'info': return 'green';
+    default: return 'white';
+  }
+}
+
+function getSeveritySymbol(type: 'issue' | 'passed', severity: AnnotationSeverity): string {
+  if (type === 'passed') return 'OK';
+  switch (severity) {
+    case 'error': return 'ERR';
+    case 'warning': return 'WARN';
+    default: return 'OK';
+  }
+}
+
+function escapeDrawtext(text: string): string {
+  // Escape special characters for ffmpeg drawtext
+  return text
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "'\\''")
+    .replace(/:/g, '\\:')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]');
+}
+
+function buildClipList(project: AnnotatedProject, annotations: Annotation[]): ClipInfo[] {
+  const clips: ClipInfo[] = [];
+
+  for (const shot of project.shots) {
+    const takeJobIds = (shot as any).take_job_ids as string[] | undefined;
+
+    if (takeJobIds && takeJobIds.length > 0) {
+      for (let i = 0; i < takeJobIds.length; i++) {
+        const videoPath = getVideoPath(takeJobIds[i]);
+        if (videoPath && existsSync(videoPath)) {
+          const clipAnnotations = annotations.filter(
+            a => a.target.shot_id === shot.shot_id && a.target.take_index === i
+          );
+          clips.push({
+            shotId: shot.shot_id,
+            takeIndex: i,
+            videoPath,
+            annotations: clipAnnotations
+          });
+        }
+      }
+    } else {
+      const jobId = (shot as any).job_id as string | undefined;
+      if (jobId) {
+        const videoPath = getVideoPath(jobId);
+        if (videoPath && existsSync(videoPath)) {
+          const clipAnnotations = annotations.filter(
+            a => a.target.shot_id === shot.shot_id && a.target.take_index === undefined
+          );
+          clips.push({
+            shotId: shot.shot_id,
+            videoPath,
+            annotations: clipAnnotations
+          });
+        }
+      }
+    }
+  }
+
+  return clips;
+}
+
+function buildDrawtextFilter(clip: ClipInfo): string {
+  const filters: string[] = [];
+
+  // Header: shot ID and take
+  const takeLabel = clip.takeIndex !== undefined ? ` (take ${clip.takeIndex})` : '';
+  const header = escapeDrawtext(`${clip.shotId}${takeLabel}`);
+  filters.push(
+    `drawtext=text='${header}':fontsize=24:fontcolor=white:borderw=2:bordercolor=black:x=20:y=20`
+  );
+
+  // Agent name
+  filters.push(
+    `drawtext=text='clip-validator':fontsize=18:fontcolor=gray:borderw=1:bordercolor=black:x=20:y=50`
+  );
+
+  // Annotation results at bottom (stack upward)
+  const maxLines = 5;
+  const relevantAnnotations = clip.annotations.slice(0, maxLines);
+  const lineHeight = 25;
+  const bottomMargin = 30;
+
+  relevantAnnotations.forEach((ann, idx) => {
+    const symbol = getSeveritySymbol(ann.type, ann.severity);
+    const color = getSeverityColor(ann.severity);
+    const text = escapeDrawtext(`[${symbol}] ${ann.message}`);
+    const yPos = `h-${bottomMargin + (relevantAnnotations.length - 1 - idx) * lineHeight}`;
+
+    filters.push(
+      `drawtext=text='${text}':fontsize=16:fontcolor=${color}:borderw=1:bordercolor=black:x=20:y=${yPos}`
+    );
+  });
+
+  return filters.join(',');
+}
+
+async function assembleWithAnnotations(
+  project: AnnotatedProject,
+  annotations: Annotation[]
+): Promise<string> {
+  const clips = buildClipList(project, annotations);
+
+  if (clips.length === 0) {
+    throw new Error('No valid clips found to assemble');
+  }
+
+  console.log(`\nAssembling ${clips.length} clips with annotations...`);
+
+  // Create temp directory for intermediate files
+  const tempDir = join(tmpdir(), `clip-validator-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+
+  // Ensure exports directory exists
+  mkdirSync(EXPORTS_DIR, { recursive: true });
+
+  const annotatedClips: string[] = [];
+
+  // Step 1: Create annotated version of each clip
+  for (let i = 0; i < clips.length; i++) {
+    const clip = clips[i];
+    const outputPath = join(tempDir, `clip_${i}.mp4`);
+    const filter = buildDrawtextFilter(clip);
+
+    console.log(`  Processing ${clip.shotId}${clip.takeIndex !== undefined ? ` (take ${clip.takeIndex})` : ''}...`);
+
+    const cmd = `ffmpeg -y -i "${clip.videoPath}" -vf "${filter}" -c:v libx264 -preset fast -crf 23 -c:a copy "${outputPath}"`;
+
+    try {
+      execSync(cmd, { stdio: 'pipe' });
+      annotatedClips.push(outputPath);
+    } catch (err: any) {
+      console.error(`  Failed to process clip: ${err.message}`);
+      throw err;
+    }
+  }
+
+  // Step 2: Create concat file
+  const concatFile = join(tempDir, 'concat.txt');
+  const concatContent = annotatedClips.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n');
+  writeFileSync(concatFile, concatContent);
+
+  // Step 3: Concatenate all clips
+  const outputFilename = `${project.project_id}_validated.mp4`;
+  const outputPath = join(EXPORTS_DIR, outputFilename);
+
+  console.log('  Concatenating clips...');
+
+  // Use filter_complex concat for better compatibility with varying durations/formats
+  const inputArgs = annotatedClips.map(p => `-i "${p}"`).join(' ');
+  const filterInputs = annotatedClips.map((_, i) => `[${i}:v][${i}:a]`).join('');
+  const concatCmd = `ffmpeg -y ${inputArgs} -filter_complex "${filterInputs}concat=n=${annotatedClips.length}:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -preset fast -crf 23 "${outputPath}"`;
+
+  try {
+    execSync(concatCmd, { stdio: 'pipe' });
+  } catch (err: any) {
+    console.error(`  Failed to concatenate: ${err.message}`);
+    throw err;
+  }
+
+  // Cleanup temp files
+  try {
+    const fs = require('fs');
+    for (const f of annotatedClips) {
+      fs.unlinkSync(f);
+    }
+    fs.unlinkSync(concatFile);
+    fs.rmdirSync(tempDir);
+  } catch {
+    // Ignore cleanup errors
+  }
+
+  return outputPath;
+}
+
 function printSummary(result: ValidationResult): void {
   console.log('\n=== Clip Validator Summary ===\n');
   console.log(`Total clips: ${result.summary.total_clips}`);
@@ -427,20 +620,26 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
-    console.log('Usage: npx tsx clip-validator.ts <project.json>');
-    console.log('       npx tsx clip-validator.ts --project-id <id>');
+    console.log('Usage: npx tsx clip-validator.ts <project.json> [--visual]');
+    console.log('       npx tsx clip-validator.ts --project-id <id> [--visual]');
+    console.log('\nOptions:');
+    console.log('  --visual    Generate annotated video output');
     process.exit(1);
   }
 
+  // Parse flags
+  const visualMode = args.includes('--visual');
+  const filteredArgs = args.filter(a => a !== '--visual');
+
   let projectArg: string;
-  if (args[0] === '--project-id') {
-    if (!args[1]) {
+  if (filteredArgs[0] === '--project-id') {
+    if (!filteredArgs[1]) {
       console.error('Missing project ID');
       process.exit(1);
     }
-    projectArg = args[1];
+    projectArg = filteredArgs[1];
   } else {
-    projectArg = args[0];
+    projectArg = filteredArgs[0];
   }
 
   console.log('Loading project...');
@@ -469,6 +668,16 @@ async function main(): Promise<void> {
   console.log(`Saved ${newAnnotations.length} new annotations to project`);
 
   printSummary(result);
+
+  // Generate visual output if requested
+  if (visualMode) {
+    try {
+      const outputPath = await assembleWithAnnotations(project, result.annotations);
+      console.log(`\nVisual output: ${outputPath}`);
+    } catch (err: any) {
+      console.error(`\nFailed to generate visual output: ${err.message}`);
+    }
+  }
 
   // Exit with error code if blocking issues
   if (result.summary.errors > 0) {
