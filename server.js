@@ -1438,6 +1438,44 @@ async function analyzeImageWithGemini(imagePath, accessToken, projectId) {
   return text;
 }
 
+// Build explicit voice description from character info for Veo dialogue
+function buildVoiceDescription(speaker, characterDesc, mood) {
+  const genderHints = {
+    'man': 'male', 'woman': 'female', 'boy': 'male young',
+    'girl': 'female young', 'male': 'male', 'female': 'female'
+  };
+
+  let gender = '';
+  const descLower = (characterDesc || '').toLowerCase();
+  for (const [hint, g] of Object.entries(genderHints)) {
+    if (descLower.includes(hint)) {
+      gender = g;
+      break;
+    }
+  }
+
+  // Extract age if present (e.g., "40s", "30 year old")
+  const ageMatch = characterDesc?.match(/(\d+)s?[\s-]*(year|old)?/i);
+  const age = ageMatch ? `${ageMatch[1]}s` : '';
+
+  // Map mood to voice quality
+  const voiceQualities = {
+    'tense': 'controlled, tight',
+    'mysterious': 'measured, low',
+    'ominous': 'deep, foreboding',
+    'vulnerable': 'soft, wavering',
+    'cheerful': 'warm, bright',
+    'angry': 'sharp, forceful',
+    'peaceful': 'calm, gentle',
+    'melancholic': 'subdued, reflective',
+    'hopeful': 'warm, optimistic',
+    'urgent': 'quick, intense'
+  };
+  const quality = voiceQualities[mood] || 'natural';
+
+  return [gender, age, quality].filter(Boolean).join(', ') || 'natural voice';
+}
+
 // Reusable function to generate Veo prompts from descriptions
 async function generateVeoPromptInternal(description, durationSeconds, style, claudeKey, options = {}) {
   const {
@@ -1475,24 +1513,44 @@ Ensure lighting, color palette, and composition support this mood.`;
   // Build dialogue guidance for Veo native speech generation
   let dialogueGuidance = '';
   if (dialogue && dialogue.length > 0) {
-    const lines = dialogue.map(d =>
-      `- ${d.speaker.toUpperCase()} (${d.voiceDescription}, ${d.mood} tone): "${d.text}"`
-    ).join('\n');
+    const lines = dialogue.map(d => {
+      const voiceDesc = buildVoiceDescription(d.speaker, d.voiceDescription, d.mood);
+      return `- ${d.speaker.toUpperCase()} (${voiceDesc}): "${d.text}"`;
+    }).join('\n');
 
     dialogueGuidance = `
-SPOKEN DIALOGUE (characters speak these lines on camera with Veo native audio):
+DIALOGUE REQUIREMENTS:
+The following lines MUST be spoken clearly on camera. Structure your prompt in TWO PARTS:
+
+PART 1 - VISUAL SCENE:
+- Describe camera, framing, lighting, atmosphere
+- Character positioning and minimal blocking
+- Do NOT describe speech or dialogue here
+- Keep action simple during dialogue delivery
+
+PART 2 - DIALOGUE (copy this section exactly at the end of your prompt):
+---
+DIALOGUE:
 ${lines}
 
-For dialogue shots:
-- Characters must speak these exact lines with natural lip movement and voice
-- Match voice tone to the mood indicated
-- Frame speakers appropriately - close-up for intimate lines, wider for exchanges
-- Include natural pauses, gestures, and reactions between lines
-- Describe voice qualities (warm, tense, hushed, etc.) to guide Veo's audio generation`;
+VOICE DIRECTION: Close-mic'd, clear audio, minimal room reverb. Natural speaking pace.
+---
+
+CRITICAL: Include the DIALOGUE section exactly as shown above at the END of your prompt.`;
   }
 
-  const systemPrompt = `You are a cinematographer writing prompts for Veo, an AI video generator.
+  // Build dialogue structure instruction if dialogue is present
+  const dialogueStructureNote = dialogue && dialogue.length > 0 ? `
+IMPORTANT - DIALOGUE SHOT STRUCTURE:
+This shot contains dialogue. You MUST structure your output as:
+1. VISUAL DESCRIPTION (camera, lighting, character position - NO mention of speaking)
+2. Then copy the DIALOGUE section exactly as provided in DIALOGUE REQUIREMENTS below
 
+Keep visual action minimal during speech. The character should be relatively still while delivering lines.
+` : '';
+
+  const systemPrompt = `You are a cinematographer writing prompts for Veo, an AI video generator.
+${dialogueStructureNote}
 Given the action description and context, write a detailed video generation prompt that:
 - Describes the motion/action clearly
 - Specifies camera movement and angle

@@ -245,3 +245,4 @@ See `docs/qa-checklist.md` for manual QA reference.
 - VFX-heavy prompts (neon, hologram, glowing) often fail
 - Character consistency improves with locking but poses still vary
 - Complex physics unreliable
+- Static starting positions unreliable - Veo tends to add entrance movement (door opening, stepping into frame) even when character should already be in place. Consider using reference frames or accepting brief lead-in action.
