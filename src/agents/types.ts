@@ -155,3 +155,29 @@ export interface Annotation {
 export interface AnnotatedProject extends Project {
   annotations?: Annotation[];
 }
+
+// Cut point analysis types - for identifying optimal trim points in generated clips
+export type CutPointIssueType =
+  | 'entrance_movement'  // Character walks in when should already be in place
+  | 'dead_time'          // Action completes early, static frames remain
+  | 'late_action'        // Key action happens later than expected
+  | 'rushed_action'      // Action too fast, filler at start/end
+  | 'discontinuity'      // Visual glitch, jump cut, or quality drop
+  | 'other';
+
+export interface CutPointIssue {
+  type: CutPointIssueType;
+  at_seconds: number;
+  description: string;
+}
+
+export interface CutPointAnalysis {
+  actual_action_start: number;      // When meaningful action actually starts
+  actual_action_end: number;        // When meaningful action actually ends
+  suggested_trim_start: number;     // Seconds to trim from beginning (0 if none)
+  suggested_trim_end: number | null; // Trim to this timestamp, null = use full clip
+  usable_duration: number;          // Resulting duration after trims
+  issues_detected: CutPointIssue[];
+  reasoning: string;                // 1-2 sentences explaining the recommendation
+  confidence: 'high' | 'medium' | 'low';
+}

@@ -214,12 +214,14 @@ Original agent without Agent SDK context. Still works but doesn't read CLAUDE.md
 - `concept-reviewer.ts` - Review raw concepts before production
 - `system-refiner.ts` - Autonomous optimization of interpretation prompts
 - `clip-validator.ts` - Automated clip validation using ffprobe
+- `cut-point-analyzer.ts` - Find optimal trim points in generated clips
 
 ```bash
 npx tsx project-reviewer.ts                    # Review most recent project
 npx tsx system-refiner.ts                      # Run optimization cycle
 npx tsx system-refiner.ts --hints "improve feasibility"
 npx tsx clip-validator.ts project.json         # Validate generated clips
+npx tsx cut-point-analyzer.ts project.json     # Find trim points
 ```
 
 ### Clip Validator
@@ -247,6 +249,42 @@ npx tsx clip-validator.ts project.json --visual   # Generate annotated video
 - Top-left: Shot ID, take number, agent name
 - Bottom: Validation results color-coded (green=OK, yellow=WARN, red=ERR)
 - Output: `data/exports/{project_id}_validated.mp4`
+
+### Cut Point Analyzer
+
+Uses Gemini to analyze generated video clips and recommend optimal trim points. Detects common Veo issues like entrance movement, dead time, and rushed action.
+
+```bash
+npx tsx cut-point-analyzer.ts project.json              # Analyze all clips
+npx tsx cut-point-analyzer.ts --project-id my_project   # By project ID
+npx tsx cut-point-analyzer.ts project.json --shot shot_3  # Specific shot
+npx tsx cut-point-analyzer.ts project.json --dry-run    # Don't save annotations
+```
+
+**Issues detected:**
+| Issue Type | Description |
+|------------|-------------|
+| `entrance_movement` | Character walks in when should already be in place |
+| `dead_time` | Action completes early, static frames at end |
+| `late_action` | Key action starts late, dead time at start |
+| `rushed_action` | Action too fast, filler at start/end |
+| `discontinuity` | Visual glitch, jump cut, or artifact |
+
+**Output format:**
+```typescript
+interface CutPointAnalysis {
+  actual_action_start: number;      // When action actually starts
+  actual_action_end: number;        // When action actually ends
+  suggested_trim_start: number;     // Seconds to trim from start
+  suggested_trim_end: number | null; // Where to end (null = full clip)
+  usable_duration: number;          // Duration after trims
+  issues_detected: CutPointIssue[];
+  reasoning: string;                // Explanation
+  confidence: 'high' | 'medium' | 'low';
+}
+```
+
+**Context passed to Gemini:** Shot description, target duration, mood/energy/tension, dialogue (if present). Gemini watches the clip and identifies where meaningful action starts/ends.
 
 ## Agent Annotations
 

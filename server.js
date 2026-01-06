@@ -1473,7 +1473,7 @@ async function analyzeImageWithGemini(imagePath, accessToken, projectId) {
     }],
     generationConfig: {
       temperature: 0.3,
-      maxOutputTokens: 1024  // Gemini 2.5 Flash uses thinking tokens that count against this limit
+      maxOutputTokens: 8192  // Gemini 2.5 Flash uses thinking tokens that count against this limit
     }
   };
 
@@ -3055,7 +3055,7 @@ Example: "East Asian woman, late 20s, shoulder-length straight black hair, slim 
       }],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 1024
+        maxOutputTokens: 8192
       }
     };
 
@@ -3121,7 +3121,7 @@ Example: "East Asian woman, early 30s, shoulder-length black hair, slim build, w
         }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 1024
+          maxOutputTokens: 8192
         }
       };
 
@@ -3257,7 +3257,7 @@ Output format: A single paragraph, 25-40 words. Example: "Industrial warehouse i
       }],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 1024
+        maxOutputTokens: 8192
       }
     };
 
@@ -3325,7 +3325,7 @@ Example: "Modern industrial loft interior, exposed red brick walls, polished con
         }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 1024
+          maxOutputTokens: 8192
         }
       };
 
@@ -3427,7 +3427,7 @@ Provide:
       }],
       generationConfig: {
         temperature: 0.4,
-        maxOutputTokens: 1024
+        maxOutputTokens: 8192
       }
     };
 
@@ -3466,6 +3466,138 @@ Provide:
     res.status(500).json({ error: err.message });
   }
 });
+
+
+// Analyze video for cut points (trim recommendations)
+app.post('/api/gemini/analyze-cut-points', async (req, res) => {
+  const config = loadConfig();
+
+  try {
+    const { accessToken, projectId } = await getVeoAccessToken(config);
+    const { videoPath, shotContext } = req.body;
+
+    // shotContext should include: role, description, duration_target, mood, energy, tension, dialogue (optional)
+    if (!videoPath || !shotContext) {
+      return res.status(400).json({ error: 'videoPath and shotContext are required' });
+    }
+
+    // Read video file and convert to base64
+    const fullPath = path.join(__dirname, 'data', videoPath.replace(/^\//, ''));
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'Video file not found' });
+    }
+
+    const videoBuffer = fs.readFileSync(fullPath);
+    const videoBase64 = videoBuffer.toString('base64');
+
+    console.log('Analyzing cut points for:', fullPath);
+
+    // Build contextual analysis prompt
+    const dialogueInfo = shotContext.dialogue
+      ? '\n- Dialogue: ' + shotContext.dialogue.map(d => '"' + d.text + '" (' + d.speaker + ')').join(', ')
+      : '';
+
+    const analysisPrompt = 'Analyze this video clip for CUT POINT OPTIMIZATION. The goal is to find the best trim points.\n\n' +
+      'SHOT CONTEXT:\n' +
+      '- Role: ' + (shotContext.role || 'unknown') + '\n' +
+      '- Description: ' + (shotContext.description || 'No description') + '\n' +
+      '- Target duration: ' + (shotContext.duration_target || 'unknown') + 's\n' +
+      '- Mood: ' + (shotContext.mood || 'unknown') + ' | Energy: ' + (shotContext.energy || 'unknown') + ' | Tension: ' + (shotContext.tension || 'unknown') + dialogueInfo + '\n' +
+      (shotContext.timing_hints ? '- Timing hints: ' + shotContext.timing_hints + '\n' : '') +
+      '\nCOMMON VEO ISSUES TO DETECT:\n' +
+      '1. "entrance_movement" - Character walks in, door opens, or stepping into frame when subject should already be in position\n' +
+      '2. "dead_time" - Action completes early leaving static/redundant frames at the end\n' +
+      '3. "late_action" - Key action happens later than expected, leaving dead time at the start\n' +
+      '4. "rushed_action" - Action completes too quickly, with filler/holding at start or end\n' +
+      '5. "discontinuity" - Visual glitch, jump cut, artifact, or quality drop\n\n' +
+      'ANALYZE THE CLIP AND RESPOND WITH ONLY THIS JSON (no markdown, no explanation):\n' +
+      '{\n' +
+      '  "actual_action_start": <seconds when meaningful action actually starts>,\n' +
+      '  "actual_action_end": <seconds when meaningful action actually ends>,\n' +
+      '  "suggested_trim_start": <seconds to trim from beginning, 0 if none needed>,\n' +
+      '  "suggested_trim_end": <seconds from start where clip should end, or null to use full clip>,\n' +
+      '  "usable_duration": <resulting duration after suggested trims>,\n' +
+      '  "issues_detected": [\n' +
+      '    {\n' +
+      '      "type": "<entrance_movement|dead_time|late_action|rushed_action|discontinuity|other>",\n' +
+      '      "at_seconds": <timestamp where issue occurs>,\n' +
+      '      "description": "<brief description>"\n' +
+      '    }\n' +
+      '  ],\n' +
+      '  "reasoning": "<1-2 sentences explaining the trim recommendation>",\n' +
+      '  "confidence": "<high|medium|low>"\n' +
+      '}';
+
+    const requestBody = {
+      contents: [{
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'video/mp4',
+              data: videoBase64
+            }
+          },
+          {
+            text: analysisPrompt
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.2,  // Lower temp for more consistent JSON output
+        maxOutputTokens: 8192
+      }
+    };
+
+    const response = await fetch(
+      'https://us-central1-aiplatform.googleapis.com/v1/projects/' + projectId + '/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + accessToken
+        },
+        body: JSON.stringify(requestBody)
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Gemini error:', error);
+      return res.status(response.status).json({ error });
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Parse JSON from response (handle potential markdown wrapping)
+    let analysis;
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+      analysis = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      console.error('Failed to parse Gemini JSON response:', text);
+      return res.status(500).json({
+        error: 'Failed to parse analysis response',
+        raw_response: text
+      });
+    }
+
+    console.log('Cut point analysis complete:', analysis.reasoning);
+    res.json({
+      analysis,
+      model: 'gemini-2.5-flash',
+      raw: data
+    });
+  } catch (err) {
+    console.error('Cut point analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ============ Video Assembly ============
 
