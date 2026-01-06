@@ -3946,7 +3946,7 @@ app.post('/api/assemble', async (req, res) => {
         console.log(`  Overlay ${idx + 1}: "${overlay.text}" at ${startTime}s-${endTime}s (${position})`);
 
         // fontsize scales with video width (w/18 ≈ 40px at 720w, 107px at 1920w)
-        return `drawtext=text='${text}':fontsize=(w/18):fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=${yExpr}:enable='between(t,${startTime},${endTime})'`;
+        return `drawtext=text='${text}':fontsize=(w/36):fontcolor=white:borderw=2:bordercolor=black:x=20:y=${yExpr}:enable='between(t,${startTime},${endTime})'`;
       });
 
       const filterChain = drawtextFilters.join(',');
