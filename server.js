@@ -1604,7 +1604,16 @@ VOICE DIRECTION: Close-mic'd, clear audio, minimal room reverb. Natural speaking
 CRITICAL: Include the DIALOGUE section exactly as shown above at the END of your prompt.`;
   }
 
-  // Build dialogue structure instruction if dialogue is present
+  // Audio guidance - no background music, only diegetic sounds
+  const audioGuidance = `
+AUDIO REQUIREMENTS:
+- NO background music or musical score
+- Dialogue/speech: INCLUDE if specified in DIALOGUE section
+- Sound effects: INCLUDE only sounds directly caused by on-screen action (footsteps, doors, ambient room tone, etc.)
+- Keep audio naturalistic and diegetic (sounds that exist within the scene)
+`;
+
+    // Build dialogue structure instruction if dialogue is present
   const dialogueStructureNote = dialogue && dialogue.length > 0 ? `
 IMPORTANT - DIALOGUE SHOT STRUCTURE:
 This shot contains dialogue. You MUST structure your output as:
@@ -1630,7 +1639,7 @@ If a CHARACTER description is provided in CONTEXT, you MUST:
 2. Include ALL details verbatim: physical features, specific clothing colors/items, expression
 3. Do NOT paraphrase or omit any character details - copy them exactly
 4. Example: If context says "East Asian woman, 30s, shoulder-length black hair, white blouse, navy pants" your prompt MUST begin with those exact details
-${moodGuidance}${productionConstraintGuidance}${dialogueGuidance}
+${moodGuidance}${productionConstraintGuidance}${dialogueGuidance}${audioGuidance}
 Output only the prompt text, no JSON or explanation.`;
 
   let userMessage = `ACTION: ${description}`;
