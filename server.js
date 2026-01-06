@@ -5,6 +5,7 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 const { computeVoiceSettings, computeMusicProfile, computeAudioProfile } = require('./audio-rules');
 const { generateTakePlan, estimateDialogueDuration, getSplitSummary } = require('./dialogue-splitter');
+const transcribeRoutes = require('./routes/transcribe');
 
 const app = express();
 const PORT = 3000;
@@ -4338,6 +4339,9 @@ app.get('/api/validate-project/:id', (req, res) => {
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+// Routes
+app.use('/api/transcribe', transcribeRoutes);
 
 // Start server
 app.listen(PORT, () => {

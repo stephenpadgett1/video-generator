@@ -25,6 +25,10 @@ GET /api/jobs/:id  # Poll until complete
 
 POST /api/assemble { shots, audioLayers, outputFilename }
   → { path }
+
+POST /api/transcribe { videoPath }
+  → { segments: [{ start, end, text }], full_text, duration }
+  # Whisper transcription - requires openaiKey in data/config.json
 ```
 
 ## Narrative Model
