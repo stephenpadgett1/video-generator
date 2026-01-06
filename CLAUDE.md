@@ -136,6 +136,35 @@ const { validateDialogue } = require('./validators');
 // Checks: speakers in voiceCasting, timing within duration, overlap warnings
 ```
 
+### Auto-Split Dialogue Shots
+
+When dialogue is too long for a single Veo generation (max 8s), execute-project automatically splits into multiple takes with frame chaining.
+
+**Timing calculation:**
+- Speech rate: 150 WPM → `(wordCount / 150) * 60` seconds
+- Pauses: +0.5s between speaker changes
+- Action buffer: ~1s for visual establishment
+- Max usable dialogue per take: ~7s
+
+**Split behavior:**
+- Detects when `dialogueDuration + buffer > shot.duration_target`
+- Splits at speaker changes (preferred) or sentence boundaries
+- Generates sequential takes with frame chaining for continuity
+- Last frame of take N becomes reference image for take N+1
+
+**Project data:**
+```javascript
+// Single-take shot (normal)
+{ shot_id: "shot_1", job_id: "job_abc" }
+
+// Multi-take shot (auto-split)
+{ shot_id: "shot_2", take_job_ids: ["job_def", "job_ghi"], job_id: "job_def" }
+```
+
+**Assembly:** Multi-take shots are joined with hard cuts (no transitions between takes of the same shot).
+
+See `dialogue-splitter.js` for the splitting algorithms.
+
 ## Transitions (Assembly)
 
 Tension-aware (priority):

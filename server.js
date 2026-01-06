@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
 const { computeVoiceSettings, computeMusicProfile, computeAudioProfile } = require('./audio-rules');
+const { generateTakePlan, estimateDialogueDuration, getSplitSummary } = require('./dialogue-splitter');
 
 const app = express();
 const PORT = 3000;
@@ -70,6 +71,70 @@ function updateJob(jobId, updates) {
     return jobs[index];
   }
   return null;
+}
+
+/**
+ * Wait for a job to complete by polling its status
+ * @param {string} jobId - Job ID to wait for
+ * @param {number} pollInterval - Milliseconds between polls (default 2000)
+ * @param {number} timeout - Max milliseconds to wait (default 300000 = 5 min)
+ * @returns {Promise<Object>} Completed job object with result
+ */
+async function waitForJobComplete(jobId, pollInterval = 2000, timeout = 300000) {
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < timeout) {
+    const jobs = loadJobs();
+    const job = jobs.find(j => j.id === jobId);
+    
+    if (!job) {
+      throw new Error(`Job ${jobId} not found`);
+    }
+    
+    if (job.status === 'complete') {
+      return job;
+    }
+    
+    if (job.status === 'error') {
+      throw new Error(`Job ${jobId} failed: ${job.error}`);
+    }
+    
+    // Wait before next poll
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+  
+  throw new Error(`Job ${jobId} timed out after ${timeout}ms`);
+}
+
+/**
+ * Extract the last frame from a video file
+ * @param {string} videoPath - Path to video file (relative to data/)
+ * @returns {Promise<string>} Path to extracted frame image
+ */
+async function extractLastFrame(videoPath) {
+  const videoFullPath = path.join(__dirname, 'data', videoPath.replace(/^\//, ''));
+  
+  if (!fs.existsSync(videoFullPath)) {
+    throw new Error(`Video not found: ${videoPath}`);
+  }
+  
+  const duration = getVideoDuration(videoFullPath);
+  const timestamp = Math.max(0, duration - 0.1);
+  
+  const imagesDir = path.join(__dirname, 'generated-images');
+  if (!fs.existsSync(imagesDir)) {
+    fs.mkdirSync(imagesDir, { recursive: true });
+  }
+  
+  const randomId = Math.random().toString(36).substring(2, 8);
+  const filename = `frame_last_${Date.now()}_${randomId}.png`;
+  const filepath = path.join(imagesDir, filename);
+  
+  const ffmpegCmd = `ffmpeg -y -ss ${timestamp} -i "${videoFullPath}" -vframes 1 "${filepath}"`;
+  console.log(`Extracting last frame: ${ffmpegCmd}`);
+  execSync(ffmpegCmd, { stdio: 'pipe' });
+  
+  return filepath;
 }
 
 // ============ ElevenLabs Voice Cache ============
@@ -2607,82 +2672,197 @@ Return a JSON array of description strings, one for each shot in order.`;
       if (environmentContext) additionalContextParts.push(environmentContext);
       const combinedContext = additionalContextParts.length > 0 ? additionalContextParts.join('\n\n') : null;
 
-      // Build dialogue context for Veo native speech generation
-      let dialogueContext = null;
-      if (shot.dialogue && Array.isArray(shot.dialogue) && shot.dialogue.length > 0) {
-        dialogueContext = shot.dialogue.map(line => {
-          const char = characterMap[line.speaker];
-          const voiceDesc = char?.description || line.speaker;
-          const lineMood = line.mood || shot.mood;
-          return {
-            speaker: line.speaker,
-            text: line.text,
-            mood: lineMood,
-            voiceDescription: voiceDesc
-          };
-        });
-        console.log(`Shot ${shot.shot_id} has ${dialogueContext.length} dialogue lines for Veo`);
-      }
-
-      // Generate Veo prompt from description
-      const veoPrompt = await generateVeoPromptInternal(
-        shot.description,
-        shot.duration_target,
-        projectStyle,
-        config.claudeKey,
-        {
-          aspectRatio,
-          additionalContext: combinedContext,
-          mood: shot.mood,  // Pass mood for atmospheric guidance
-          productionRules: resolvedProductionRules,  // Pass production constraints
-          dialogue: dialogueContext  // Pass dialogue for native Veo speech
-        }
-      );
-
-      console.log(`Generated Veo prompt for ${shot.shot_id}:`, veoPrompt.substring(0, 80) + '...');
-
-      // Create job for this shot
-      const jobInput = {
-        prompt: veoPrompt,
-        aspectRatio,
-        durationSeconds: shot.duration_target
-      };
-
-      // Add reference image: character takes priority, environment as fallback
+      // Check if shot needs splitting due to long dialogue
+      const takePlan = generateTakePlan(shot);
       const finalReferenceImage = referenceImagePath || environmentImagePath;
-      if (finalReferenceImage) {
-        jobInput.referenceImagePath = finalReferenceImage;
-        const source = referenceImagePath ? 'character' : 'environment';
-        console.log(`Using ${source} reference image for ${shot.shot_id}: ${finalReferenceImage}`);
+
+      if (takePlan && takePlan.length > 1) {
+        // Multi-take shot: process takes sequentially with frame chaining
+        console.log(`Shot ${shot.shot_id} requires ${takePlan.length} takes (dialogue: ${estimateDialogueDuration(shot.dialogue).toFixed(1)}s)`);
+
+        const takeJobIds = [];
+        let prevVideoPath = null;
+
+        for (let takeIndex = 0; takeIndex < takePlan.length; takeIndex++) {
+          const take = takePlan[takeIndex];
+          console.log(`  Processing take ${takeIndex + 1}/${takePlan.length}: ${take.dialogue_lines.length} lines, ${take.duration}s`);
+
+          // Build dialogue context for this take's lines
+          const takeDialogueContext = take.dialogue_lines.map(line => {
+            const char = characterMap[line.speaker];
+            const voiceDesc = char?.description || line.speaker;
+            const lineMood = line.mood || shot.mood;
+            return {
+              speaker: line.speaker,
+              text: line.text,
+              mood: lineMood,
+              voiceDescription: voiceDesc
+            };
+          });
+
+          // Get reference frame: from previous take or original reference
+          let takeReferenceImage = finalReferenceImage;
+          if (prevVideoPath) {
+            try {
+              takeReferenceImage = await extractLastFrame(prevVideoPath);
+              console.log(`  Using last frame from previous take: ${takeReferenceImage}`);
+            } catch (err) {
+              console.warn(`  Failed to extract last frame: ${err.message}, using original reference`);
+            }
+          }
+
+          // Generate Veo prompt for this take
+          const takePrompt = await generateVeoPromptInternal(
+            take.action_hint,
+            take.duration,
+            projectStyle,
+            config.claudeKey,
+            {
+              aspectRatio,
+              additionalContext: combinedContext,
+              mood: shot.mood,
+              productionRules: resolvedProductionRules,
+              dialogue: takeDialogueContext
+            }
+          );
+
+          console.log(`  Generated take ${takeIndex + 1} prompt:`, takePrompt.substring(0, 60) + '...');
+
+          // Create and submit job for this take
+          const takeJobInput = {
+            prompt: takePrompt,
+            aspectRatio,
+            durationSeconds: take.duration
+          };
+
+          if (takeReferenceImage) {
+            takeJobInput.referenceImagePath = takeReferenceImage;
+          }
+
+          const takeJob = {
+            id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            type: 'veo-generate',
+            status: 'pending',
+            input: takeJobInput,
+            result: null,
+            error: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          const allJobs = loadJobs();
+          allJobs.unshift(takeJob);
+          saveJobs(allJobs);
+
+          // Start processing
+          processVeoJob(takeJob.id, takeJob.input);
+          takeJobIds.push(takeJob.id);
+
+          jobs.push({
+            shot_id: shot.shot_id,
+            take_index: takeIndex,
+            job_id: takeJob.id,
+            duration_target: take.duration,
+            veo_prompt: takePrompt
+          });
+
+          // Wait for job to complete before next take (for frame chaining)
+          if (takeIndex < takePlan.length - 1) {
+            console.log(`  Waiting for take ${takeIndex + 1} to complete for frame chaining...`);
+            try {
+              const completedJob = await waitForJobComplete(takeJob.id);
+              prevVideoPath = completedJob.result.path;
+              console.log(`  Take ${takeIndex + 1} complete: ${prevVideoPath}`);
+            } catch (err) {
+              console.error(`  Take ${takeIndex + 1} failed: ${err.message}`);
+              // Continue with next take using original reference
+              prevVideoPath = null;
+            }
+          }
+        }
+
+        // Store all take job IDs on the shot
+        shot.take_job_ids = takeJobIds;
+        shot.job_id = takeJobIds[0]; // Keep backward compat with first take
+
+      } else {
+        // Single-take shot: use existing flow
+
+        // Build dialogue context for Veo native speech generation
+        let dialogueContext = null;
+        if (shot.dialogue && Array.isArray(shot.dialogue) && shot.dialogue.length > 0) {
+          dialogueContext = shot.dialogue.map(line => {
+            const char = characterMap[line.speaker];
+            const voiceDesc = char?.description || line.speaker;
+            const lineMood = line.mood || shot.mood;
+            return {
+              speaker: line.speaker,
+              text: line.text,
+              mood: lineMood,
+              voiceDescription: voiceDesc
+            };
+          });
+          console.log(`Shot ${shot.shot_id} has ${dialogueContext.length} dialogue lines for Veo`);
+        }
+
+        // Generate Veo prompt from description
+        const veoPrompt = await generateVeoPromptInternal(
+          shot.description,
+          shot.duration_target,
+          projectStyle,
+          config.claudeKey,
+          {
+            aspectRatio,
+            additionalContext: combinedContext,
+            mood: shot.mood,
+            productionRules: resolvedProductionRules,
+            dialogue: dialogueContext
+          }
+        );
+
+        console.log(`Generated Veo prompt for ${shot.shot_id}:`, veoPrompt.substring(0, 80) + '...');
+
+        // Create job for this shot
+        const jobInput = {
+          prompt: veoPrompt,
+          aspectRatio,
+          durationSeconds: shot.duration_target
+        };
+
+        if (finalReferenceImage) {
+          jobInput.referenceImagePath = finalReferenceImage;
+          const source = referenceImagePath ? 'character' : 'environment';
+          console.log(`Using ${source} reference image for ${shot.shot_id}: ${finalReferenceImage}`);
+        }
+
+        const job = {
+          id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          type: 'veo-generate',
+          status: 'pending',
+          input: jobInput,
+          result: null,
+          error: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        const allJobs = loadJobs();
+        allJobs.unshift(job);
+        saveJobs(allJobs);
+
+        // Start processing
+        processVeoJob(job.id, job.input);
+
+        // Store job_id in shot for persistence
+        shot.job_id = job.id;
+
+        jobs.push({
+          shot_id: shot.shot_id,
+          job_id: job.id,
+          duration_target: shot.duration_target,
+          veo_prompt: veoPrompt
+        });
       }
-
-      const job = {
-        id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-        type: 'veo-generate',
-        status: 'pending',
-        input: jobInput,
-        result: null,
-        error: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      const allJobs = loadJobs();
-      allJobs.unshift(job);
-      saveJobs(allJobs);
-
-      // Start processing
-      processVeoJob(job.id, job.input);
-
-      // Store job_id in shot for persistence
-      shot.job_id = job.id;
-
-      jobs.push({
-        shot_id: shot.shot_id,
-        job_id: job.id,
-        duration_target: shot.duration_target,
-        veo_prompt: veoPrompt
-      });
 
       // Small delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -3313,51 +3493,115 @@ app.post('/api/assemble', async (req, res) => {
     const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
     const jobs = loadJobs();
 
+    // Use voiceCasting.narrator as fallback for voice_id if not explicitly provided
+    if (!voice_id && project.voiceCasting?.narrator) {
+      voice_id = project.voiceCasting.narrator;
+      console.log(`Using narrator voice from project voiceCasting: ${voice_id}`);
+    }
+
     // Build shots from project
     let runningTime = 0;
     shots = [];
 
     for (const shot of project.shots || []) {
-      const job = shot.job_id ? jobs.find(j => j.id === shot.job_id) : null;
-      if (!job || job.status !== 'complete') {
-        return res.status(400).json({
-          error: `Shot ${shot.shot_id} not ready: ${job?.status || 'no job'}`
-        });
-      }
+      // Check for multi-take shots
+      if (shot.take_job_ids && Array.isArray(shot.take_job_ids) && shot.take_job_ids.length > 1) {
+        // Multi-take shot: add all takes in sequence with hard cuts
+        console.log(`Shot ${shot.shot_id} has ${shot.take_job_ids.length} takes`);
 
-      shots.push({
-        videoPath: job.result.path,
-        energy: shot.energy
-      });
+        for (let takeIdx = 0; takeIdx < shot.take_job_ids.length; takeIdx++) {
+          const takeJobId = shot.take_job_ids[takeIdx];
+          const job = jobs.find(j => j.id === takeJobId);
 
-      // Auto-generate VO audioLayer if shot has vo.text and voice_id provided
-      if (shot.vo?.text && voice_id) {
-        const shotDuration = job.result.duration || shot.duration_target || 4;
-        let startTime = runningTime;
+          if (!job || job.status !== 'complete') {
+            return res.status(400).json({
+              error: `Take ${takeIdx + 1} of shot ${shot.shot_id} not ready: ${job?.status || 'no job'}`
+            });
+          }
 
-        // Adjust based on vo.timing
-        if (shot.vo.timing === 'middle') {
-          startTime += shotDuration * 0.25;
-        } else if (shot.vo.timing === 'end') {
-          startTime += shotDuration * 0.5;
+          shots.push({
+            videoPath: job.result.path,
+            energy: shot.energy,
+            tension: shot.tension,
+            // Hard cut between takes of same shot (they should be continuous)
+            skipTransition: takeIdx > 0
+          });
+
+          runningTime += job.result.duration || 4;
         }
 
-        audioLayers.push({
-          type: 'vo',
-          text: shot.vo.text,
-          voice_id: voice_id,
-          volume: 1,
-          startTime: startTime
+        // For multi-take shots, VO timing is relative to total shot duration
+        if (shot.vo?.text && voice_id) {
+          const totalDuration = shot.take_job_ids.reduce((sum, jobId) => {
+            const job = jobs.find(j => j.id === jobId);
+            return sum + (job?.result?.duration || 4);
+          }, 0);
+
+          let startTime = runningTime - totalDuration; // Start of this shot
+          if (shot.vo.timing === 'middle') {
+            startTime += totalDuration * 0.25;
+          } else if (shot.vo.timing === 'end') {
+            startTime += totalDuration * 0.5;
+          }
+
+          audioLayers.push({
+            type: 'vo',
+            text: shot.vo.text,
+            voice_id: voice_id,
+            volume: 1,
+            startTime: startTime
+          });
+        }
+
+        // Skip dialogue for multi-take shots (Veo handles it)
+        if (shot.dialogue && shot.dialogue.length > 0) {
+          console.log(`Skipping ElevenLabs for multi-take shot ${shot.shot_id} - using Veo native dialogue`);
+        }
+
+      } else {
+        // Single-take shot: use existing flow
+        const job = shot.job_id ? jobs.find(j => j.id === shot.job_id) : null;
+        if (!job || job.status !== 'complete') {
+          return res.status(400).json({
+            error: `Shot ${shot.shot_id} not ready: ${job?.status || 'no job'}`
+          });
+        }
+
+        shots.push({
+          videoPath: job.result.path,
+          energy: shot.energy,
+          tension: shot.tension
         });
-      }
 
-      // Skip dialogue array - Veo generates native audio with lip sync
-      // ElevenLabs TTS is only used for 'vo' (narration), not character dialogue
-      if (shot.dialogue && Array.isArray(shot.dialogue) && shot.dialogue.length > 0) {
-        console.log(`Skipping ElevenLabs for shot ${shot.shot_id} - using Veo native dialogue (${shot.dialogue.length} lines)`);
-      }
+        // Auto-generate VO audioLayer if shot has vo.text and voice_id provided
+        if (shot.vo?.text && voice_id) {
+          const shotDuration = job.result.duration || shot.duration_target || 4;
+          let startTime = runningTime;
 
-      runningTime += job.result.duration || shot.duration_target || 4;
+          // Adjust based on vo.timing
+          if (shot.vo.timing === 'middle') {
+            startTime += shotDuration * 0.25;
+          } else if (shot.vo.timing === 'end') {
+            startTime += shotDuration * 0.5;
+          }
+
+          audioLayers.push({
+            type: 'vo',
+            text: shot.vo.text,
+            voice_id: voice_id,
+            volume: 1,
+            startTime: startTime
+          });
+        }
+
+        // Skip dialogue array - Veo generates native audio with lip sync
+        // ElevenLabs TTS is only used for 'vo' (narration), not character dialogue
+        if (shot.dialogue && Array.isArray(shot.dialogue) && shot.dialogue.length > 0) {
+          console.log(`Skipping ElevenLabs for shot ${shot.shot_id} - using Veo native dialogue (${shot.dialogue.length} lines)`);
+        }
+
+        runningTime += job.result.duration || shot.duration_target || 4;
+      }
     }
 
     console.log(`Loaded project ${project_id}: ${shots.length} shots, ${audioLayers.length} audio layers`);
@@ -3607,8 +3851,17 @@ app.post('/api/assemble', async (req, res) => {
     for (let i = 1; i < shots.length; i++) {
       const prevShot = shots[i - 1];
       const currShot = shots[i];
-      const transition = getTransitionType(prevShot, currShot);
       const nextClipPath = normalizedPaths[i];
+
+      // Skip transition for multi-take shots (takes should be continuous)
+      if (currShot.skipTransition) {
+        console.log(`Transition ${i - 1} → ${i}: cut (multi-take continuation)`);
+        finalClips.push(currentClipPath);
+        currentClipPath = nextClipPath;
+        continue;
+      }
+
+      const transition = getTransitionType(prevShot, currShot);
 
       // Log transition with energy and tension info
       const prevInfo = `e:${prevShot.energy ?? '-'} t:${prevShot.tension ?? '-'}`;
@@ -3808,7 +4061,7 @@ app.use('/exports', express.static(path.join(__dirname, 'data', 'exports')));
 // ============ Frame Extraction ============
 
 app.post('/api/extract-frame', async (req, res) => {
-  const { videoPath, timestamp = 0, saveToDisk = false } = req.body;
+  let { videoPath, timestamp = 0, saveToDisk = false } = req.body;
 
   try {
     const videoFullPath = path.join(__dirname, 'data', videoPath.replace(/^\//, ''));
@@ -3816,6 +4069,14 @@ app.post('/api/extract-frame', async (req, res) => {
     if (!fs.existsSync(videoFullPath)) {
       return res.status(404).json({ error: 'Video not found' });
     }
+
+    // Support timestamp: 'last' or -1 to extract final frame
+    if (timestamp === 'last' || timestamp === -1) {
+      const duration = getVideoDuration(videoFullPath);
+      timestamp = Math.max(0, duration - 0.1); // 0.1s before end to ensure valid frame
+      console.log(`Extracting last frame at ${timestamp}s (video duration: ${duration}s)`);
+    }
+
 
     if (saveToDisk) {
       // Save frame to generated-images/ directory
