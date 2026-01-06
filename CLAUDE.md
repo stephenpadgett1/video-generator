@@ -27,8 +27,12 @@ POST /api/assemble { shots, audioLayers, outputFilename }
   → { path }
 
 POST /api/transcribe { videoPath }
-  → { segments: [{ start, end, text }], full_text, duration }
+  → { segments, words, full_text, duration }
   # Whisper transcription - requires openaiKey in data/config.json
+
+POST /api/analyze-dialogue-clip { videoPath, expectedDialogue }
+  → { trim: { start, end, usable_duration }, validation: { match_score, verdict, missing_words } }
+  # Trim recommendations + dialogue accuracy check
 ```
 
 ## Narrative Model

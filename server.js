@@ -6,6 +6,8 @@ const { execSync } = require('child_process');
 const { computeVoiceSettings, computeMusicProfile, computeAudioProfile } = require('./audio-rules');
 const { generateTakePlan, estimateDialogueDuration, getSplitSummary } = require('./dialogue-splitter');
 const transcribeRoutes = require('./routes/transcribe');
+const analyzeDialogueRoutes = require('./routes/analyze-dialogue');
+const audioTimelineRoutes = require('./routes/audio-timeline');
 
 const app = express();
 const PORT = 3000;
@@ -4342,6 +4344,8 @@ app.get('/', (req, res) => {
 
 // Routes
 app.use('/api/transcribe', transcribeRoutes);
+app.use('/api/analyze-dialogue-clip', analyzeDialogueRoutes);
+app.use('/api/audio-timeline', audioTimelineRoutes);
 
 // Start server
 app.listen(PORT, () => {
