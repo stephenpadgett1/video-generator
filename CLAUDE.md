@@ -192,6 +192,7 @@ Generates reference image + extracts immutable features (30-50 words including c
 - Audio: `data/audio/`
 - Images: `generated-images/`
 - Exports: `data/exports/`
+- Edits: `data/edits/` (per-clip edit variations)
 - Agents: `src/agents/`
 
 ## Claude Agents
@@ -223,6 +224,7 @@ Original agent without Agent SDK context. Still works but doesn't read CLAUDE.md
 - `system-refiner.ts` - Autonomous optimization of interpretation prompts
 - `clip-validator.ts` - Automated clip validation using ffprobe
 - `cut-point-analyzer.ts` - Find optimal trim points in generated clips
+- `clip-editor.ts` - Auto-create trimmed variations from analysis
 
 ```bash
 npx tsx project-reviewer.ts                    # Review most recent project
@@ -230,6 +232,7 @@ npx tsx system-refiner.ts                      # Run optimization cycle
 npx tsx system-refiner.ts --hints "improve feasibility"
 npx tsx clip-validator.ts project.json         # Validate generated clips
 npx tsx cut-point-analyzer.ts project.json     # Find trim points
+npx tsx clip-editor.ts project.json            # Create edit variations
 ```
 
 ### Clip Validator
@@ -260,7 +263,7 @@ npx tsx clip-validator.ts project.json --visual   # Generate annotated video
 
 ### Cut Point Analyzer
 
-Uses Gemini to analyze generated video clips and recommend optimal trim points. Detects common Veo issues like entrance movement, dead time, and rushed action.
+Analyzes generated video clips using audio timeline (ffmpeg + Whisper) to recommend optimal trim points. Detects dead time at start/end, internal pauses, and dialogue issues.
 
 ```bash
 npx tsx cut-point-analyzer.ts project.json              # Analyze all clips
@@ -272,27 +275,103 @@ npx tsx cut-point-analyzer.ts project.json --dry-run    # Don't save annotations
 **Issues detected:**
 | Issue Type | Description |
 |------------|-------------|
-| `entrance_movement` | Character walks in when should already be in place |
-| `dead_time` | Action completes early, static frames at end |
-| `late_action` | Key action starts late, dead time at start |
-| `rushed_action` | Action too fast, filler at start/end |
-| `discontinuity` | Visual glitch, jump cut, or artifact |
+| `late_action` | Speech/action starts late, dead time at start |
+| `dead_time` | Speech/action ends early, static frames at end |
+| `other` | Internal pauses, missing dialogue words |
 
-**Output format:**
-```typescript
-interface CutPointAnalysis {
-  actual_action_start: number;      // When action actually starts
-  actual_action_end: number;        // When action actually ends
-  suggested_trim_start: number;     // Seconds to trim from start
-  suggested_trim_end: number | null; // Where to end (null = full clip)
-  usable_duration: number;          // Duration after trims
-  issues_detected: CutPointIssue[];
-  reasoning: string;                // Explanation
-  confidence: 'high' | 'medium' | 'low';
+**How it works:** Calls `/api/audio-timeline` which combines ffmpeg silencedetect with Whisper transcription. FFmpeg provides accurate pause detection (Whisper compresses silence gaps). Returns trim recommendations based on speech segment boundaries.
+
+### Clip Editor
+
+Reads cut-point-analyzer annotations and automatically creates trimmed variations. Works with the edit system to produce rendered video files.
+
+```bash
+npx tsx clip-editor.ts project.json              # Create trim variations
+npx tsx clip-editor.ts --project-id my_project   # By project ID
+npx tsx clip-editor.ts project.json --shot shot_3  # Specific shot
+npx tsx clip-editor.ts project.json --auto-approve  # Also select variations
+npx tsx clip-editor.ts project.json --dry-run    # Preview without changes
+```
+
+**Workflow:**
+1. Reads cut-point-analyzer annotations from project JSON
+2. For clips with trim recommendations, creates edit folder via `/api/edit/start`
+3. Creates trimmed variation via `/api/edit/trim`
+4. Optionally auto-approves the variation for assembly
+
+## Clip Edit System
+
+Per-clip editing structure for tracking variations. Edit folders are stored in `data/edits/{job_id}/`.
+
+### Structure
+
+```
+data/edits/{job_id}/
+  manifest.json           # Edit state, history, context
+  source.mp4              # Copy of original video
+  v001_trim.mp4           # Variation: trimmed
+  v002_trim_speed.mp4     # Variation: trimmed + speed adjusted
+```
+
+### API Endpoints
+
+```
+POST /api/edit/start
+  { job_id, project_id?, shot_id?, take_index?, expected_dialogue? }
+  → Creates edit folder, copies source, initializes manifest
+
+POST /api/edit/trim
+  { job_id, trim_start, trim_end?, notes? }
+  → Renders trimmed variation via ffmpeg
+
+POST /api/edit/speed
+  { job_id, base_variation?, speed, notes? }
+  → Creates speed-adjusted variation (can stack on previous)
+
+POST /api/edit/select
+  { job_id, variation_id }
+  → Marks variation as selected for assembly
+
+POST /api/edit/analysis
+  { job_id, analysis }
+  → Store analysis results (from cut-point-analyzer)
+
+GET /api/edit/:job_id
+  → Returns manifest
+
+GET /api/edit
+  → Lists all edit folders with status
+```
+
+### Assembly Integration
+
+Assembly automatically checks for edited variations. When loading shots from a project:
+- If `data/edits/{job_id}/manifest.json` exists with `status: "approved"` and a `selected` variation
+- Uses the selected variation file instead of the original
+- No changes needed to assembly calls - it's automatic
+
+### Manifest Schema
+
+```json
+{
+  "job_id": "job_123_abc",
+  "source": { "path": "../video/veo_xyz.mp4", "duration": 8.0 },
+  "context": {
+    "project_id": "my_project",
+    "shot_id": "shot_3",
+    "take_index": 0,
+    "expected_dialogue": "Hello world"
+  },
+  "analysis": { "trim_start": 0.15, "trim_end": 7.56, ... },
+  "variations": [
+    { "id": "v001", "filename": "v001_trim.mp4", "edits": {...}, "duration": 7.41 }
+  ],
+  "selected": "v001",
+  "status": "approved"
 }
 ```
 
-**Context passed to Gemini:** Shot description, target duration, mood/energy/tension, dialogue (if present). Gemini watches the clip and identifies where meaningful action starts/ends.
+**Status values:** `pending`, `in_progress`, `review`, `approved`, `archived`
 
 ## Agent Annotations
 

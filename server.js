@@ -8,6 +8,7 @@ const { generateTakePlan, estimateDialogueDuration, getSplitSummary } = require(
 const transcribeRoutes = require('./routes/transcribe');
 const analyzeDialogueRoutes = require('./routes/analyze-dialogue');
 const audioTimelineRoutes = require('./routes/audio-timeline');
+const editRoutes = require('./routes/edit');
 
 const app = express();
 const PORT = 3000;
@@ -20,7 +21,31 @@ app.use(express.static('public'));
 // Config storage (simple file-based for now)
 const CONFIG_PATH = path.join(__dirname, 'data', 'config.json');
 const PROJECTS_PATH = path.join(__dirname, 'data', 'projects');
+const EDITS_PATH = path.join(__dirname, 'data', 'edits');
 const ELEVENLABS_VOICES_CACHE_PATH = path.join(__dirname, 'data', 'elevenlabs-voices.json');
+
+// Helper: Get video path for a job, checking for edited variations first
+function getVideoPathForJob(jobId, originalPath) {
+  try {
+    const editManifest = path.join(EDITS_PATH, jobId, 'manifest.json');
+    if (fs.existsSync(editManifest)) {
+      const manifest = JSON.parse(fs.readFileSync(editManifest, 'utf8'));
+      if (manifest.selected && manifest.status === 'approved') {
+        const variation = manifest.variations.find(v => v.id === manifest.selected);
+        if (variation) {
+          const editedPath = path.join(EDITS_PATH, jobId, variation.filename);
+          if (fs.existsSync(editedPath)) {
+            console.log(`Using edited variation ${variation.id} for job ${jobId}`);
+            return editedPath;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Fall through to original
+  }
+  return originalPath;
+}
 
 // Ensure data directories exist
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
@@ -3664,7 +3689,7 @@ app.post('/api/assemble', async (req, res) => {
           }
 
           shots.push({
-            videoPath: job.result.path,
+            videoPath: getVideoPathForJob(takeJobId, job.result.path),
             energy: shot.energy,
             tension: shot.tension,
             // Hard cut between takes of same shot (they should be continuous)
@@ -3712,7 +3737,7 @@ app.post('/api/assemble', async (req, res) => {
         }
 
         shots.push({
-          videoPath: job.result.path,
+          videoPath: getVideoPathForJob(shot.job_id, job.result.path),
           energy: shot.energy,
           tension: shot.tension
         });
@@ -4346,6 +4371,7 @@ app.get('/', (req, res) => {
 app.use('/api/transcribe', transcribeRoutes);
 app.use('/api/analyze-dialogue-clip', analyzeDialogueRoutes);
 app.use('/api/audio-timeline', audioTimelineRoutes);
+app.use('/api/edit', editRoutes);
 
 // Start server
 app.listen(PORT, () => {
