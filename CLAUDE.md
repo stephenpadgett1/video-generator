@@ -34,10 +34,15 @@ POST /api/analyze-dialogue-clip { videoPath, expectedDialogue }
   → { trim: { start, end, usable_duration }, validation: { match_score, verdict, missing_words } }
   # Trim recommendations + dialogue accuracy check
 
-POST /api/generate-music { prompt?, duration_seconds?, mood?, tension?, energy? }
-  → { path, filename, duration, prompt_used }
-  # ElevenLabs Eleven Music - generates instrumental music from text prompt
-  # If mood provided without prompt, auto-builds prompt from audio-rules.js profiles
+POST /api/generate-music
+  Options:
+    A: { prompt, duration_seconds }           # Instrumental from text
+    B: { lyrics, style?, duration_seconds }   # Song with vocals
+    C: { composition_plan }                   # Full ElevenLabs control
+    D: { mood, tension?, energy? }            # Auto-built instrumental
+  → { path, filename, duration, has_vocals, request_type, prompt_used, lyrics_used }
+  # ElevenLabs Eleven Music - instrumental or with vocals
+  # style: { positive: [...], negative: [...] } for lyrics mode
 ```
 
 ## Narrative Model
