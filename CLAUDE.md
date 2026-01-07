@@ -8,6 +8,13 @@ AI video production system: concept → structured shots → video generation �
 npm start  # Server at http://localhost:3000
 ```
 
+## Advanced Techniques
+
+See **TECHNIQUES.md** for hybrid FFmpeg + Veo methods including:
+- **Frame chaining with double edge detection** — Multi-clip continuous motion (tunnels, corridors, infinite passages)
+- **Edge detection as compositional constraint** — Shape preservation across generations
+- **Color-coded reference experiments** — Semantic guides for Veo
+
 ## Core Workflow
 
 ```
