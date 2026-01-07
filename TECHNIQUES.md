@@ -121,3 +121,36 @@ ffmpeg -f concat -safe 0 -stream_loop 24 -i strobe.txt -t 10 -vf "fps=24" strobe
 3. **Iterative abstraction:** Edge detect → generate → edge detect → generate...
 4. **Composition lock:** Same edge reference, vary prompts for A/B content tests
 5. **Hand-drawn integration:** Sketch on paper → scan → edge enhance → Veo fills in
+
+---
+
+## Color-Coded Reference Experiment (2026-01-07)
+
+Tested whether Veo interprets colored shapes as compositional/semantic guides.
+
+### Test 1: High-Contrast Color Silhouette
+**Reference:** Red silhouette on black (from thresholded video frame)
+**Prompt:** "Person standing in misty forest"
+**Result:** Worked as expected. Veo followed the compositional pattern. Person positioned where red shape was.
+
+### Test 2: Multi-Color Shapes (Human + Abstract)
+**Reference:** Red human silhouette (left) + Blue rectangle (right) + Green strip (bottom)
+**Prompt:** "Person facing glowing monolith in field"
+**Result:** Interesting stylized effect. Needs more investigation.
+
+### Test 3: Edges + Posterized Color
+**Reference:** Posterized colors with cyan edge lines overlaid
+**Prompt:** "Person on road at sunset"
+**Result:** **Ghostly double effect** - Veo rendered both the actual person AND a translucent ghost/echo.
+
+**Key finding:** Edges + color creates a "double exposure" effect - Veo tries to satisfy both structural edges AND color regions.
+
+| Reference Style | Compositional Control | Notes |
+|-----------------|----------------------|-------|
+| Color silhouette | Strong | Clean, predictable |
+| Multi-color shapes | Unclear | Needs more testing |
+| Edges + color | Strong | Creates ghost/double effect |
+
+### Test Files
+- generated-images/test_ref_*.png (references)
+- data/video/test_gen*.mp4 (outputs)
