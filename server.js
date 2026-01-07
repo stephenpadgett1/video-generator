@@ -10,6 +10,7 @@ const analyzeDialogueRoutes = require('./routes/analyze-dialogue');
 const audioTimelineRoutes = require('./routes/audio-timeline');
 const editRoutes = require('./routes/edit');
 const unifiedAnalysisRoutes = require('./routes/unified-analysis');
+const musicRoutes = require('./routes/music');
 
 const app = express();
 const PORT = 3000;
@@ -4374,6 +4375,7 @@ app.use('/api/analyze-dialogue-clip', analyzeDialogueRoutes);
 app.use('/api/audio-timeline', audioTimelineRoutes);
 app.use('/api/edit', editRoutes);
 app.use('/api/analyze-clip-unified', unifiedAnalysisRoutes);
+app.use('/api', musicRoutes);
 
 // Start server
 app.listen(PORT, () => {

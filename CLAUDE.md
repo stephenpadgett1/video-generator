@@ -33,6 +33,11 @@ POST /api/transcribe { videoPath }
 POST /api/analyze-dialogue-clip { videoPath, expectedDialogue }
   → { trim: { start, end, usable_duration }, validation: { match_score, verdict, missing_words } }
   # Trim recommendations + dialogue accuracy check
+
+POST /api/generate-music { prompt?, duration_seconds?, mood?, tension?, energy? }
+  → { path, filename, duration, prompt_used }
+  # ElevenLabs Eleven Music - generates instrumental music from text prompt
+  # If mood provided without prompt, auto-builds prompt from audio-rules.js profiles
 ```
 
 ## Narrative Model
