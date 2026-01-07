@@ -60,6 +60,84 @@ function detectSceneChanges(videoPath, threshold = 0.4) {
   }
 }
 
+// ============================================
+// BLACK FRAME DETECTION
+// ============================================
+
+/**
+ * Detect black frames/fades using ffmpeg's blackdetect filter
+ * Returns timestamps where extended black sequences occur
+ */
+function detectBlackFrames(videoPath, pixThreshold = 0.98, minDuration = 0.1) {
+  const cmd = `ffmpeg -i "${videoPath}" -vf "blackdetect=d=${minDuration}:pix_th=${pixThreshold}" -f null - 2>&1`;
+
+  try {
+    const output = execSync(cmd, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+    const blackFrames = [];
+    const lines = output.split('\n');
+
+    for (const line of lines) {
+      // Parse: [blackdetect @ ...] black_start:1.5 black_end:2.0 black_duration:0.5
+      const match = line.match(/black_start:([\d.]+)\s+black_end:([\d.]+)\s+black_duration:([\d.]+)/);
+      if (match) {
+        blackFrames.push({
+          start: parseFloat(match[1]),
+          end: parseFloat(match[2]),
+          duration: parseFloat(match[3])
+        });
+      }
+    }
+
+    return blackFrames;
+  } catch (err) {
+    console.error('Black frame detection error:', err.message);
+    return [];
+  }
+}
+
+// ============================================
+// FREEZE FRAME DETECTION
+// ============================================
+
+/**
+ * Detect frozen/static frames using ffmpeg's freezedetect filter
+ * Returns timestamps where frame content doesn't change
+ */
+function detectFreezeFrames(videoPath, noiseTolerance = 0.001, minDuration = 0.5) {
+  const cmd = `ffmpeg -i "${videoPath}" -vf "freezedetect=n=${noiseTolerance}:d=${minDuration}" -f null - 2>&1`;
+
+  try {
+    const output = execSync(cmd, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+    const freezeFrames = [];
+    const lines = output.split('\n');
+
+    let currentStart = null;
+    for (const line of lines) {
+      // Parse: [freezedetect @ ...] freeze_start: 3.0
+      const startMatch = line.match(/freeze_start:\s*([\d.]+)/);
+      // Parse: [freezedetect @ ...] freeze_end: 4.5 freeze_duration: 1.5
+      const endMatch = line.match(/freeze_end:\s*([\d.]+)\s+freeze_duration:\s*([\d.]+)/);
+
+      if (startMatch) {
+        currentStart = parseFloat(startMatch[1]);
+      }
+      if (endMatch && currentStart !== null) {
+        freezeFrames.push({
+          start: currentStart,
+          end: parseFloat(endMatch[1]),
+          duration: parseFloat(endMatch[2])
+        });
+        currentStart = null;
+      }
+    }
+
+    return freezeFrames;
+  } catch (err) {
+    console.error('Freeze frame detection error:', err.message);
+    return [];
+  }
+}
+
 /**
  * Convert scene changes to continuous visual segments
  */
@@ -304,7 +382,7 @@ function detectCorrelations(sceneChanges, speechSegments, silences) {
 /**
  * Detect anomalies (unexpected patterns)
  */
-function detectAnomalies(sceneChanges, speechSegments, silences, clipDuration, context) {
+function detectAnomalies(sceneChanges, speechSegments, silences, clipDuration, context, blackFrames = [], freezeFrames = []) {
   const anomalies = [];
 
   // Check for scene change mid-speech
@@ -387,13 +465,61 @@ function detectAnomalies(sceneChanges, speechSegments, silences, clipDuration, c
     }
   }
 
+  // Check for long freeze frames (potential AI artifact or dead time)
+  for (const freeze of freezeFrames) {
+    if (freeze.duration > 1.0) {
+      anomalies.push({
+        type: 'long_freeze_frame',
+        timestamp: freeze.start,
+        severity: 'warning',
+        description: `Frozen frame detected: ${freeze.duration.toFixed(2)}s at ${freeze.start.toFixed(2)}s (possible AI artifact)`
+      });
+    }
+  }
+
+  // Check for freeze during speech (unexpected stillness)
+  for (const freeze of freezeFrames) {
+    const duringSpeech = speechSegments.find(seg =>
+      freeze.start < seg.end && freeze.end > seg.start
+    );
+    if (duringSpeech && freeze.duration > 0.5) {
+      anomalies.push({
+        type: 'freeze_during_speech',
+        timestamp: freeze.start,
+        severity: 'warning',
+        description: `Visual freeze during speech at ${freeze.start.toFixed(2)}s (${freeze.duration.toFixed(2)}s)`
+      });
+    }
+  }
+
+  // Check for black frames at start/end (natural cut points - info level)
+  const blackAtStart = blackFrames.find(b => b.start < 0.3);
+  if (blackAtStart) {
+    anomalies.push({
+      type: 'black_frame_at_start',
+      timestamp: blackAtStart.end,
+      severity: 'info',
+      description: `Black frame at start (ends at ${blackAtStart.end.toFixed(2)}s) - natural cut point`
+    });
+  }
+
+  const blackAtEnd = blackFrames.find(b => b.end > clipDuration - 0.3);
+  if (blackAtEnd) {
+    anomalies.push({
+      type: 'black_frame_at_end',
+      timestamp: blackAtEnd.start,
+      severity: 'info',
+      description: `Black frame at end (starts at ${blackAtEnd.start.toFixed(2)}s) - natural cut point`
+    });
+  }
+
   return anomalies;
 }
 
 /**
  * Generate edit suggestions based on analysis
  */
-function generateEditSuggestions(sceneChanges, speechSegments, silences, anomalies, clipDuration) {
+function generateEditSuggestions(sceneChanges, speechSegments, silences, anomalies, clipDuration, blackFrames = [], freezeFrames = []) {
   const suggestions = [];
 
   // Calculate optimal trim points
@@ -402,10 +528,18 @@ function generateEditSuggestions(sceneChanges, speechSegments, silences, anomali
   const reasons = [];
   const basedOn = [];
 
+  // Check for black frame at start (highest priority trim point)
+  const blackAtStart = blackFrames.find(b => b.start < 0.1);
+  if (blackAtStart) {
+    trimStart = blackAtStart.end;
+    reasons.push(`Black frame ends at ${trimStart.toFixed(2)}s`);
+    basedOn.push('visual');
+  }
+
   // Find where meaningful content starts
   const firstSpeech = speechSegments.length > 0 ? speechSegments[0] : null;
 
-  if (firstSpeech && firstSpeech.start > 0.3) {
+  if (!blackAtStart && firstSpeech && firstSpeech.start > 0.3) {
     // Look for scene change to cut at
     const cutPoint = sceneChanges.find(s =>
       s.timestamp < firstSpeech.start &&
@@ -423,10 +557,18 @@ function generateEditSuggestions(sceneChanges, speechSegments, silences, anomali
     }
   }
 
+  // Check for black frame at end (highest priority trim point)
+  const blackAtEnd = blackFrames.find(b => b.end > clipDuration - 0.1);
+  if (blackAtEnd) {
+    trimEnd = blackAtEnd.start;
+    reasons.push(`Black frame starts at ${trimEnd.toFixed(2)}s`);
+    if (!basedOn.includes('visual')) basedOn.push('visual');
+  }
+
   // Find where meaningful content ends
   const lastSpeech = speechSegments.length > 0 ? speechSegments[speechSegments.length - 1] : null;
 
-  if (lastSpeech && clipDuration - lastSpeech.end > 0.5) {
+  if (!blackAtEnd && lastSpeech && clipDuration - lastSpeech.end > 0.5) {
     // Look for scene change after speech as cut point
     const postSpeechCut = sceneChanges.find(s =>
       s.timestamp > lastSpeech.end &&
@@ -478,6 +620,24 @@ function generateEditSuggestions(sceneChanges, speechSegments, silences, anomali
     });
   }
 
+  // Flag long freeze frames as potential trim-out regions
+  const longFreezes = freezeFrames.filter(f => f.duration > 1.0);
+  if (longFreezes.length > 0) {
+    suggestions.push({
+      type: 'trim_out_freeze',
+      parameters: {
+        regions: longFreezes.map(f => ({
+          start: Math.round(f.start * 100) / 100,
+          end: Math.round(f.end * 100) / 100,
+          duration: Math.round(f.duration * 100) / 100
+        }))
+      },
+      reasoning: `${longFreezes.length} freeze frame region(s) detected - potential AI artifact or dead time`,
+      confidence: 0.5,
+      based_on: ['visual']
+    });
+  }
+
   return suggestions;
 }
 
@@ -526,7 +686,13 @@ router.post('/', async (req, res) => {
     sceneThreshold = 0.4,
     noiseDb = -30,
     minSilenceDuration = 0.3,
-    skipTranscription = false
+    skipTranscription = false,
+    // Black frame detection options
+    blackPixThreshold = 0.98,
+    blackMinDuration = 0.1,
+    // Freeze frame detection options
+    freezeNoise = 0.001,
+    freezeMinDuration = 0.5
   } = options;
 
   const config = loadConfig();
@@ -552,6 +718,8 @@ router.post('/', async (req, res) => {
     const clipDuration = getClipDuration(fullPath);
     const sceneChanges = detectSceneChanges(fullPath, sceneThreshold);
     const silences = detectSilence(fullPath, noiseDb, minSilenceDuration);
+    const blackFrames = detectBlackFrames(fullPath, blackPixThreshold, blackMinDuration);
+    const freezeFrames = detectFreezeFrames(fullPath, freezeNoise, freezeMinDuration);
 
     let whisperResult = { text: '', words: [] };
     let speechSegments = [];
@@ -565,8 +733,8 @@ router.post('/', async (req, res) => {
     // Build unified analysis
     const events = buildEventTimeline(sceneChanges, speechSegments, silences);
     const correlations = detectCorrelations(sceneChanges, speechSegments, silences);
-    const anomalies = detectAnomalies(sceneChanges, speechSegments, silences, clipDuration, context);
-    const editSuggestions = generateEditSuggestions(sceneChanges, speechSegments, silences, anomalies, clipDuration);
+    const anomalies = detectAnomalies(sceneChanges, speechSegments, silences, clipDuration, context, blackFrames, freezeFrames);
+    const editSuggestions = generateEditSuggestions(sceneChanges, speechSegments, silences, anomalies, clipDuration, blackFrames, freezeFrames);
     const qualityScore = calculateQualityScore(anomalies, correlations, speechSegments, clipDuration);
 
     // Determine recommended action
@@ -608,6 +776,19 @@ router.post('/', async (req, res) => {
             : clipDuration,
           has_abrupt_start: sceneChanges.length > 0 && sceneChanges[0].timestamp < 0.3,
           has_abrupt_end: sceneChanges.length > 0 && sceneChanges[sceneChanges.length - 1].timestamp > clipDuration - 0.3
+        }
+      },
+
+      visual_detection: {
+        black_frames: blackFrames,
+        freeze_frames: freezeFrames,
+        summary: {
+          has_black_frames: blackFrames.length > 0,
+          has_freeze_frames: freezeFrames.length > 0,
+          total_black_duration: blackFrames.reduce((sum, b) => sum + b.duration, 0),
+          total_freeze_duration: freezeFrames.reduce((sum, f) => sum + f.duration, 0),
+          longest_black: blackFrames.length > 0 ? Math.max(...blackFrames.map(b => b.duration)) : 0,
+          longest_freeze: freezeFrames.length > 0 ? Math.max(...freezeFrames.map(f => f.duration)) : 0
         }
       },
 

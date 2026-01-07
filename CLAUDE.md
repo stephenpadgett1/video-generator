@@ -335,9 +335,25 @@ curl -X POST http://localhost:3000/api/analyze-clip-unified \
 | Signal | Source | Purpose |
 |--------|--------|---------|
 | Scene changes | ffmpeg `select='gt(scene,0.4)'` | Visual discontinuities |
+| Black frames | ffmpeg `blackdetect` | Fades, cuts, dead regions |
+| Freeze frames | ffmpeg `freezedetect` | Static frames, AI artifacts |
 | Speech segments | Whisper + silence detection | Audio activity |
 | Silences | ffmpeg silencedetect | Natural cut points |
 | Context match | Prompt/dialogue comparison | Validate generated content |
+
+**Options:**
+```json
+{
+  "options": {
+    "sceneThreshold": 0.4,
+    "blackPixThreshold": 0.98,
+    "blackMinDuration": 0.1,
+    "freezeNoise": 0.001,
+    "freezeMinDuration": 0.5,
+    "skipTranscription": false
+  }
+}
+```
 
 **Correlations detected:**
 - `scene_change_at_silence` - Natural cut point (high confidence)
@@ -351,15 +367,22 @@ curl -X POST http://localhost:3000/api/analyze-clip-unified \
 | `dead_time_detected` | No activity at clip end | info |
 | `visual_glitch` | 3+ scene changes in 0.5s | warning |
 | `dialogue_mismatch` | <50% word match | warning |
+| `long_freeze_frame` | Freeze >1s detected | warning |
+| `freeze_during_speech` | Visual freeze during speech | warning |
+| `black_frame_at_start` | Black frame at clip start | info |
+| `black_frame_at_end` | Black frame at clip end | info |
 
 **Response includes:**
 - `scenes.changes[]` - Timestamps of visual scene changes
+- `visual_detection.black_frames[]` - Black frame regions with start/end/duration
+- `visual_detection.freeze_frames[]` - Frozen frame regions
+- `visual_detection.summary` - Totals and flags for black/freeze detection
 - `audio.speech_segments[]` - Where speech occurs
 - `reconciled.correlations[]` - Audio/visual alignment patterns
 - `reconciled.anomalies[]` - Problems detected
-- `reconciled.edit_suggestions[]` - Recommended actions
+- `reconciled.edit_suggestions[]` - Recommended actions (includes `trim_out_freeze` for long freezes)
 - `summary.recommended_action` - 'use_as_is', 'trim', 'review', or 'regenerate'
-- `summary.trim_recommendation` - Suggested trim points with reasoning
+- `summary.trim_recommendation` - Suggested trim points (prioritizes black frames as cut points)
 
 **Auto-analyze with edit:** `POST /api/edit/auto-analyze`
 ```json
