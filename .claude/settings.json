@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm start)",
+      "Bash(npm test)",
+      "Bash(npx tsx src/agents/*)",
+      "Bash(curl http://localhost:3000/*)"
+    ]
+  }
+}
