@@ -4,7 +4,7 @@
 Add two FFmpeg visual detection filters to `/api/analyze-clip-unified` for coarse edit timing signals.
 
 ## File to Modify
-`/Users/stephenpadgett/Projects/video-generator/routes/unified-analysis.js`
+`routes/unified-analysis.js`
 
 ---
 
