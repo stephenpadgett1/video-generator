@@ -1,0 +1,1213 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-01-13T10:37:54.289991",
+  "characters": {
+    "char_001": {
+      "character_id": "char_001",
+      "face_ids": [
+        "face_abstract_e_red_7.50_0",
+        "face_jan7_shot_3_walker_sprocket_0.50_0",
+        "face_jan7_shot_3_walker_sprocket_4.00_0",
+        "face_jan7_shot_3_walker_sprocket_7.50_0",
+        "face_scene_markers_test_0.50_0",
+        "face_scene_markers_test_4.00_0",
+        "face_scene_markers_test_7.50_1",
+        "face_unified_test_clip_0.50_1",
+        "face_veo_1767492000180_i8bq4p_5.50_0",
+        "face_veo_1767492152523_iam0dv_0.50_0",
+        "face_veo_1767539224168_h9epap_0.50_0",
+        "face_veo_1767539230507_zuqs6o_3.60_0",
+        "face_veo_1767539230507_zuqs6o_3.60_1",
+        "face_veo_1767545337401_uy8n76_0.50_0",
+        "face_veo_1767545337401_uy8n76_2.00_0",
+        "face_veo_1767545616261_ewvh8h_0.50_0",
+        "face_veo_1767545616261_ewvh8h_2.00_0",
+        "face_veo_1767545616261_ewvh8h_3.60_0"
+      ],
+      "clip_ids": [
+        "abstract_e_red",
+        "veo_1767492000180_i8bq4p",
+        "jan7_shot_3_walker_sprocket",
+        "veo_1767492152523_iam0dv",
+        "veo_1767545616261_ewvh8h",
+        "veo_1767545337401_uy8n76",
+        "veo_1767539230507_zuqs6o",
+        "veo_1767539224168_h9epap",
+        "unified_test_clip",
+        "scene_markers_test"
+      ],
+      "occurrence_count": 18,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Phantom Flame",
+      "description": "Abstract red smoke/flame visual - likely a false positive from fire/smoke effects rather than a person",
+      "tags": [
+        "abstract",
+        "flame",
+        "false_positive"
+      ]
+    },
+    "char_002": {
+      "character_id": "char_002",
+      "face_ids": [
+        "face_dialogue_test_nomusic_0.50_0",
+        "face_dialogue_test_nomusic_0.50_1",
+        "face_jan7_shot_3_walker_0.50_0",
+        "face_jan7_shot_3_walker_4.00_0",
+        "face_jan7_shot_3_walker_7.50_0",
+        "face_veo_1767547576913_7h7el3_0.50_0",
+        "face_veo_1767547576913_7h7el3_2.00_0",
+        "face_veo_1767547576913_7h7el3_3.60_0",
+        "face_veo_1767547581121_x7m5fi_2.00_0",
+        "face_veo_1767547581121_x7m5fi_3.60_0",
+        "face_veo_1767547588019_gtkj45_0.50_0",
+        "face_veo_1767547588019_gtkj45_2.00_0",
+        "face_veo_1767547588019_gtkj45_3.60_0",
+        "face_veo_1767656119900_dxz72b_3.60_0",
+        "face_veo_1767657798998_d9q4o8_0.50_0",
+        "face_veo_1767657798998_d9q4o8_2.00_0",
+        "face_veo_1767657798998_d9q4o8_3.60_0",
+        "face_veo_1767668885601_z0bssy_2.00_0",
+        "face_veo_1767668885601_z0bssy_3.60_0",
+        "face_veo_1767669369242_9gdvs0_3.60_0",
+        "face_veo_1767669465440_zpys41_0.50_1"
+      ],
+      "clip_ids": [
+        "veo_1767547588019_gtkj45",
+        "dialogue_test_nomusic",
+        "veo_1767668885601_z0bssy",
+        "veo_1767547576913_7h7el3",
+        "veo_1767657798998_d9q4o8",
+        "jan7_shot_3_walker",
+        "veo_1767669369242_9gdvs0",
+        "veo_1767547581121_x7m5fi",
+        "veo_1767669465440_zpys41",
+        "veo_1767656119900_dxz72b"
+      ],
+      "occurrence_count": 21,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Mei",
+      "description": "East Asian woman with shoulder-length black hair, wearing a white blouse, modern interior setting with stone wall",
+      "tags": [
+        "woman",
+        "asian",
+        "professional"
+      ]
+    },
+    "char_003": {
+      "character_id": "char_003",
+      "face_ids": [
+        "face_sagittarius_1_0.50_0",
+        "face_sagittarius_1_new_0.50_0"
+      ],
+      "clip_ids": [
+        "sagittarius_1_new",
+        "sagittarius_1"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Sagittarius Sketch",
+      "description": "Line art illustration of a centaur archer with curly hair, bow and quiver, ornate art nouveau frame",
+      "tags": [
+        "illustration",
+        "centaur",
+        "sagittarius",
+        "line_art"
+      ]
+    },
+    "char_004": {
+      "character_id": "char_004",
+      "face_ids": [
+        "face_sagittarius_1_7.50_0",
+        "face_sagittarius_1_new_4.00_0",
+        "face_sagittarius_1_new_7.50_0",
+        "face_sagittarius_2_0.50_0"
+      ],
+      "clip_ids": [
+        "sagittarius_1_new",
+        "sagittarius_2",
+        "sagittarius_1"
+      ],
+      "occurrence_count": 4,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Chiron",
+      "description": "Photorealistic centaur with brown horse body, human torso in green vest and cream shirt, wavy brown hair, bow and arrows, forest setting",
+      "tags": [
+        "centaur",
+        "archer",
+        "sagittarius",
+        "fantasy"
+      ]
+    },
+    "char_005": {
+      "character_id": "char_005",
+      "face_ids": [
+        "face_sagittarius_arrow_0.50_0",
+        "face_sagittarius_arrow_4.00_0",
+        "face_sagittarius_arrow_7.50_0",
+        "face_sagittarius_arrow_2_0.50_0",
+        "face_sagittarius_arrow_2_4.00_0",
+        "face_sagittarius_arrow_2_7.50_0",
+        "face_sagittarius_end_0.50_0",
+        "face_sagittarius_end_4.00_0",
+        "face_sagittarius_end_7.50_0",
+        "face_sagittarius_multiple_firing_0.50_0",
+        "face_sagittarius_multiple_firing_7.50_0",
+        "face_sagittarius_why_choose_0.50_0",
+        "face_sagittarius_why_choose_4.00_0"
+      ],
+      "clip_ids": [
+        "sagittarius_end",
+        "sagittarius_why_choose",
+        "sagittarius_arrow_2",
+        "sagittarius_multiple_firing",
+        "sagittarius_arrow"
+      ],
+      "occurrence_count": 13,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Archer",
+      "description": "Young man with curly red hair, warm smile, Sagittarius text overlay, cheerful demeanor",
+      "tags": [
+        "man",
+        "redhead",
+        "sagittarius",
+        "young"
+      ]
+    },
+    "char_006": {
+      "character_id": "char_006",
+      "face_ids": [
+        "face_sagittarius_crossroads_dialogue_7.50_0",
+        "face_veo_1767741933671_yh0cpr_2.00_0"
+      ],
+      "clip_ids": [
+        "veo_1767741933671_yh0cpr",
+        "sagittarius_crossroads_dialogue"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Dusty",
+      "description": "Middle-aged man with long wavy brown/grey hair, olive jacket over tan shirt, rugged appearance, standing on road through golden fields",
+      "tags": [
+        "man",
+        "middle_aged",
+        "rugged",
+        "traveler"
+      ]
+    },
+    "char_007": {
+      "character_id": "char_007",
+      "face_ids": [
+        "face_temporal_gen1_edges_0.50_0",
+        "face_temporal_gen1_edges_annotated_0.50_0",
+        "face_temporal_gen2_posterized_0.50_0",
+        "face_temporal_gen2_posterized_2.00_0",
+        "face_temporal_gen2_posterized_annotated_0.50_0",
+        "face_temporal_gen2_posterized_annotated_2.00_0",
+        "face_temporal_gen2_posterized_annotated_3.60_0",
+        "face_temporal_gen3_inverted_0.50_0",
+        "face_temporal_gen3_inverted_annotated_0.50_0"
+      ],
+      "clip_ids": [
+        "temporal_gen1_edges",
+        "temporal_gen3_inverted_annotated",
+        "temporal_gen2_posterized",
+        "temporal_gen3_inverted",
+        "temporal_gen1_edges_annotated",
+        "temporal_gen2_posterized_annotated"
+      ],
+      "occurrence_count": 9,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "The Wanderer",
+      "description": "Solitary man standing on straight road through wheat fields, ghostly face apparition in sky above, surreal/dreamlike quality",
+      "tags": [
+        "man",
+        "surreal",
+        "ghost",
+        "fields"
+      ]
+    },
+    "char_008": {
+      "character_id": "char_008",
+      "face_ids": [
+        "face_unified_test_clip_0.50_0",
+        "face_unified_test_clip_4.00_0"
+      ],
+      "clip_ids": [
+        "unified_test_clip"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Ruby",
+      "description": "Elegant Black woman with curly hair, red wrap dress, walking through a sunlit garden at golden hour",
+      "tags": [
+        "woman",
+        "black",
+        "elegant",
+        "garden"
+      ]
+    },
+    "char_009": {
+      "character_id": "char_009",
+      "face_ids": [
+        "face_veo_1767532061311_63xc2z_0.50_0",
+        "face_veo_1767532061311_63xc2z_2.00_0",
+        "face_veo_1767532061311_63xc2z_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767532061311_63xc2z"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "The Caller",
+      "description": "Split-screen composition: young person with curly hair holding phone (orange lighting) and blonde woman (blue lighting) - telephone conversation scene",
+      "tags": [
+        "split_screen",
+        "phone",
+        "dramatic_lighting"
+      ]
+    },
+    "char_010": {
+      "character_id": "char_010",
+      "face_ids": [
+        "face_veo_1767532061311_63xc2z_0.50_1",
+        "face_veo_1767532061311_63xc2z_2.00_1",
+        "face_veo_1767532061311_63xc2z_3.60_1"
+      ],
+      "clip_ids": [
+        "veo_1767532061311_63xc2z"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Phone Girl",
+      "description": "Same split-screen phone call scene - blonde woman in blue-tinted frame, appears contemplative",
+      "tags": [
+        "woman",
+        "blonde",
+        "phone",
+        "dramatic_lighting"
+      ]
+    },
+    "char_011": {
+      "character_id": "char_011",
+      "face_ids": [
+        "face_veo_1767534658267_nl3yow_0.50_0",
+        "face_veo_1767534658267_nl3yow_2.00_0",
+        "face_veo_1767534658267_nl3yow_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767534658267_nl3yow"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Elena",
+      "description": "Professional Latina woman with dark hair in a sleek bun, navy blazer over white blouse, standing in elevator, confident smile",
+      "tags": [
+        "woman",
+        "latina",
+        "professional",
+        "elevator"
+      ]
+    },
+    "char_012": {
+      "character_id": "char_012",
+      "face_ids": [
+        "face_veo_1767534746318_fho33g_0.50_0",
+        "face_veo_1767534746318_fho33g_2.00_0",
+        "face_veo_1767534746318_fho33g_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767534746318_fho33g"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Nina",
+      "description": "Professional Black woman with natural hair pulled back, navy blazer over white blouse, elevator setting, composed expression",
+      "tags": [
+        "woman",
+        "black",
+        "professional",
+        "elevator"
+      ]
+    },
+    "char_013": {
+      "character_id": "char_013",
+      "face_ids": [
+        "face_veo_1767534903411_uye5af_0.50_0",
+        "face_veo_1767534903411_uye5af_2.00_0",
+        "face_veo_1767534903411_uye5af_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767534903411_uye5af"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Victoria",
+      "description": "Dark-haired woman with hair in bun, navy blazer and white blouse, stepping through doorway with greenery behind, outdoor terrace",
+      "tags": [
+        "woman",
+        "professional",
+        "doorway"
+      ]
+    },
+    "char_014": {
+      "character_id": "char_014",
+      "face_ids": [
+        "face_veo_1767543011133_on26um_0.50_0",
+        "face_veo_1767543011133_on26um_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767543011133_on26um"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Sophie",
+      "description": "Young woman with wavy brown hair, cream cable-knit sweater, holding coffee cup in cafe with brick walls and warm lighting",
+      "tags": [
+        "woman",
+        "brunette",
+        "cafe",
+        "cozy"
+      ]
+    },
+    "char_015": {
+      "character_id": "char_015",
+      "face_ids": [
+        "face_veo_1767544758542_y4ntw3_0.50_0",
+        "face_veo_1767544758542_y4ntw3_2.00_0",
+        "face_veo_1767544758542_y4ntw3_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767544758542_y4ntw3"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Gerald",
+      "description": "Middle-aged man with grey hair, beard, rectangular glasses, light blue dress shirt and patterned tie, office cubicle setting",
+      "tags": [
+        "man",
+        "office",
+        "glasses",
+        "middle_aged"
+      ]
+    },
+    "char_016": {
+      "character_id": "char_016",
+      "face_ids": [
+        "face_veo_1767544763034_ivqr5w_0.50_0",
+        "face_veo_1767544763034_ivqr5w_2.00_0",
+        "face_veo_1767544763034_ivqr5w_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767544763034_ivqr5w"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Mr. Henderson",
+      "description": "Older man with grey hair and full beard, dark suit with striped tie, stern expression, corporate office environment",
+      "tags": [
+        "man",
+        "executive",
+        "older",
+        "serious"
+      ]
+    },
+    "char_017": {
+      "character_id": "char_017",
+      "face_ids": [
+        "face_veo_1767544764827_06qtju_0.50_0",
+        "face_veo_1767544764827_06qtju_2.00_0",
+        "face_veo_1767544764827_06qtju_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767544764827_06qtju"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Poor Milton",
+      "description": "Middle-aged man with grey hair, white dress shirt with loose tie, slumped back in office chair with shocked expression, comedic pose",
+      "tags": [
+        "man",
+        "office",
+        "shocked",
+        "comedic"
+      ]
+    },
+    "char_018": {
+      "character_id": "char_018",
+      "face_ids": [
+        "face_veo_1767544772679_5gkvo8_0.50_0",
+        "face_veo_1767544772679_5gkvo8_2.00_0",
+        "face_veo_1767544772679_5gkvo8_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767544772679_5gkvo8"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Milton",
+      "description": "Middle-aged man with grey hair and beard, blue dress shirt, looking down at red stapler on desk, office cubicle - Office Space vibes",
+      "tags": [
+        "man",
+        "office",
+        "stapler",
+        "cubicle"
+      ]
+    },
+    "char_019": {
+      "character_id": "char_019",
+      "face_ids": [
+        "face_veo_1767545182687_7slo4t_0.50_0",
+        "face_veo_1767545182687_7slo4t_2.00_0",
+        "face_veo_1767545182687_7slo4t_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767545182687_7slo4t"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Waiting Girl",
+      "description": "Young woman with long straight hair, white t-shirt and dark jeans, standing at bus stop in bright daylight, urban setting",
+      "tags": [
+        "woman",
+        "casual",
+        "bus_stop",
+        "daytime"
+      ]
+    },
+    "char_020": {
+      "character_id": "char_020",
+      "face_ids": [
+        "face_veo_1767545196156_p7x4gn_0.50_0",
+        "face_veo_1767545196156_p7x4gn_2.00_0",
+        "face_veo_1767545196156_p7x4gn_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767545196156_p7x4gn"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Rainy",
+      "description": "Woman in dark coat with long hair, standing at bus stop at night in heavy rain, neon lights reflecting on wet pavement, noir atmosphere",
+      "tags": [
+        "woman",
+        "rain",
+        "night",
+        "noir"
+      ]
+    },
+    "char_021": {
+      "character_id": "char_021",
+      "face_ids": [
+        "face_veo_1767545322306_l1u1zu_0.50_0",
+        "face_veo_1767545322306_l1u1zu_3.60_0",
+        "face_veo_1767545623178_jhqw52_0.50_0",
+        "face_veo_1767545623178_jhqw52_2.00_0",
+        "face_veo_1767545623178_jhqw52_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767545322306_l1u1zu",
+        "veo_1767545623178_jhqw52"
+      ],
+      "occurrence_count": 5,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Hiro",
+      "description": "Athletic Black man running through Japanese street with cherry blossoms, colorful jacket, carrying basketball, anime-inspired style",
+      "tags": [
+        "man",
+        "black",
+        "athletic",
+        "japan",
+        "basketball"
+      ]
+    },
+    "char_022": {
+      "character_id": "char_022",
+      "face_ids": [
+        "face_veo_1767548605442_0o52fl_0.50_0",
+        "face_veo_1767548605442_0o52fl_2.00_0",
+        "face_veo_1767548605442_0o52fl_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767548605442_0o52fl"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Claire",
+      "description": "Woman with dark bob haircut, white v-neck blouse, dark jeans and black heels, standing in living room with stone fireplace, surprised expression",
+      "tags": [
+        "woman",
+        "bob_haircut",
+        "casual_elegant",
+        "living_room"
+      ]
+    },
+    "char_023": {
+      "character_id": "char_023",
+      "face_ids": [
+        "face_veo_1767548619886_itgqq3_0.50_0",
+        "face_veo_1767548619886_itgqq3_2.00_0",
+        "face_veo_1767548619886_itgqq3_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767548619886_itgqq3"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Claire (Alt)",
+      "description": "Same woman with dark bob - standing pose by stone fireplace, composed expression, same outfit",
+      "tags": [
+        "woman",
+        "bob_haircut",
+        "fireplace"
+      ]
+    },
+    "char_024": {
+      "character_id": "char_024",
+      "face_ids": [
+        "face_veo_1767548623384_z7ryn3_0.50_0",
+        "face_veo_1767548623384_z7ryn3_2.00_0",
+        "face_veo_1767548623384_z7ryn3_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767548623384_z7ryn3"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Claire (Library)",
+      "description": "Same dark-haired woman with bob, white top and jeans, now standing in front of built-in bookshelves",
+      "tags": [
+        "woman",
+        "bob_haircut",
+        "library",
+        "bookshelves"
+      ]
+    },
+    "char_025": {
+      "character_id": "char_025",
+      "face_ids": [
+        "face_veo_1767596790936_qikw40_4.00_0",
+        "face_veo_1767596790936_qikw40_7.50_0"
+      ],
+      "clip_ids": [
+        "veo_1767596790936_qikw40"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Frank",
+      "description": "Bearded man with grey-brown hair, brown jacket over plaid flannel shirt, rustic setting, warm paternal presence",
+      "tags": [
+        "man",
+        "bearded",
+        "rustic",
+        "father_figure"
+      ]
+    },
+    "char_026": {
+      "character_id": "char_026",
+      "face_ids": [
+        "face_veo_1767596790936_qikw40_4.00_1",
+        "face_veo_1767657798998_d9q4o8_3.60_1"
+      ],
+      "clip_ids": [
+        "veo_1767657798998_d9q4o8",
+        "veo_1767596790936_qikw40"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Lily",
+      "description": "Young Asian woman with long black hair, bright blue jacket, cheerful smile, busy city street background",
+      "tags": [
+        "woman",
+        "asian",
+        "young",
+        "cheerful",
+        "city"
+      ]
+    },
+    "char_027": {
+      "character_id": "char_027",
+      "face_ids": [
+        "face_veo_1767596803213_dpdejp_4.00_0",
+        "face_veo_1767759521334_pwf9ij_2.00_0"
+      ],
+      "clip_ids": [
+        "veo_1767596803213_dpdejp",
+        "veo_1767759521334_pwf9ij"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Frank & Rosa",
+      "description": "Couple looking at old photos together - bearded man and woman with dark curly hair in red scarf, laughing warmly",
+      "tags": [
+        "couple",
+        "photos",
+        "nostalgic",
+        "warm"
+      ]
+    },
+    "char_028": {
+      "character_id": "char_028",
+      "face_ids": [
+        "face_veo_1767596810928_37cus2_0.50_0",
+        "face_veo_1767596810928_37cus2_4.00_0",
+        "face_veo_1767596810928_37cus2_7.50_0"
+      ],
+      "clip_ids": [
+        "veo_1767596810928_37cus2"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Rosa",
+      "description": "Woman with dark curly hair pulled up, red scarf, looking through photo albums with Frank, warm indoor lighting",
+      "tags": [
+        "woman",
+        "curly_hair",
+        "red_scarf",
+        "nostalgic"
+      ]
+    },
+    "char_029": {
+      "character_id": "char_029",
+      "face_ids": [
+        "face_veo_1767596810928_37cus2_0.50_1",
+        "face_veo_1767596810928_37cus2_7.50_1"
+      ],
+      "clip_ids": [
+        "veo_1767596810928_37cus2"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Rosa (Photos)",
+      "description": "Same woman with red scarf, examining old photographs, contemplative expression",
+      "tags": [
+        "woman",
+        "red_scarf",
+        "photos"
+      ]
+    },
+    "char_030": {
+      "character_id": "char_030",
+      "face_ids": [
+        "face_veo_1767656100683_mhtczd_2.00_0",
+        "face_veo_1767656100683_mhtczd_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767656100683_mhtczd"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Haunted Hannah",
+      "description": "Woman with shoulder-length brown hair, dark sweater, pushing open old doors in dusty house, fearful/tense expression, horror atmosphere",
+      "tags": [
+        "woman",
+        "horror",
+        "haunted",
+        "scared"
+      ]
+    },
+    "char_031": {
+      "character_id": "char_031",
+      "face_ids": [
+        "face_veo_1767656109448_gqnv5u_0.50_0",
+        "face_veo_1767656109448_gqnv5u_2.00_0",
+        "face_veo_1767656109448_gqnv5u_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767656109448_gqnv5u"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Kate",
+      "description": "Woman with short dark hair, grey t-shirt, arms crossed, silhouetted in doorway with bright backlight, guarded posture",
+      "tags": [
+        "woman",
+        "short_hair",
+        "silhouette",
+        "defensive"
+      ]
+    },
+    "char_032": {
+      "character_id": "char_032",
+      "face_ids": [
+        "face_veo_1767656216867_cntj75_2.00_0",
+        "face_veo_1767656216867_cntj75_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767656216867_cntj75"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Marcus & Jess",
+      "description": "Couple in hallway - man with dreadlocks and woman with blonde hair in denim jacket, casual intimate moment",
+      "tags": [
+        "couple",
+        "hallway",
+        "casual"
+      ]
+    },
+    "char_033": {
+      "character_id": "char_033",
+      "face_ids": [
+        "face_veo_1767656216912_rz3rbh_0.50_0",
+        "face_veo_1767656216912_rz3rbh_2.00_0",
+        "face_veo_1767656216912_rz3rbh_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767656216912_rz3rbh"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Detective Shaw",
+      "description": "Woman with short auburn hair, dark jacket, arms crossed, standing in hallway with dramatic backlight, authoritative presence",
+      "tags": [
+        "woman",
+        "detective",
+        "serious",
+        "backlit"
+      ]
+    },
+    "char_034": {
+      "character_id": "char_034",
+      "face_ids": [
+        "face_veo_1767657546738_reoda6_2.00_0",
+        "face_veo_1767657546738_reoda6_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767657546738_reoda6"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "James",
+      "description": "Young man with wavy brown hair, grey crewneck sweater, sitting at outdoor cafe table with coffee, autumn leaves on ground",
+      "tags": [
+        "man",
+        "young",
+        "cafe",
+        "autumn"
+      ]
+    },
+    "char_035": {
+      "character_id": "char_035",
+      "face_ids": [
+        "face_veo_1767660299784_a5l4j2_2.00_0",
+        "face_veo_1767660299784_a5l4j2_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767660299784_a5l4j2"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "The Inspector",
+      "description": "Man in tan trench coat, illuminated by single hanging bulb, dramatic noir lighting, detective/spy aesthetic",
+      "tags": [
+        "man",
+        "noir",
+        "detective",
+        "trench_coat"
+      ]
+    },
+    "char_036": {
+      "character_id": "char_036",
+      "face_ids": [
+        "face_veo_1767660816055_das6c7_0.50_0",
+        "face_veo_1767660816055_das6c7_2.00_0",
+        "face_veo_1767660816055_das6c7_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767660816055_das6c7"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Shadowy Sylvia",
+      "description": "Extreme close-up of woman's face, dramatic overhead lighting, dark setting, intense gaze, thriller atmosphere",
+      "tags": [
+        "woman",
+        "close_up",
+        "dramatic",
+        "thriller"
+      ]
+    },
+    "char_037": {
+      "character_id": "char_037",
+      "face_ids": [
+        "face_veo_1767664364372_wf8nqw_0.50_0",
+        "face_veo_1767664364372_wf8nqw_3.00_0",
+        "face_veo_1767664364372_wf8nqw_5.50_0"
+      ],
+      "clip_ids": [
+        "veo_1767664364372_wf8nqw"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Chef Marco",
+      "description": "Young male chef with dark hair, white chef's coat and black apron, professional kitchen with copper pans, focused on cooking",
+      "tags": [
+        "man",
+        "chef",
+        "kitchen",
+        "professional"
+      ]
+    },
+    "char_038": {
+      "character_id": "char_038",
+      "face_ids": [
+        "face_veo_1767668501506_dmeu9j_0.50_0",
+        "face_veo_1767668501506_dmeu9j_2.00_0"
+      ],
+      "clip_ids": [
+        "veo_1767668501506_dmeu9j"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Coffee Buddies",
+      "description": "Two men at cafe - one in grey t-shirt, one in denim shirt - sharing coffee and laughing together, warm friendship",
+      "tags": [
+        "men",
+        "friends",
+        "cafe",
+        "happy"
+      ]
+    },
+    "char_039": {
+      "character_id": "char_039",
+      "face_ids": [
+        "face_veo_1767669361034_gxy4wy_0.50_0",
+        "face_veo_1767669361034_gxy4wy_2.00_0",
+        "face_veo_1767669361034_gxy4wy_3.60_0"
+      ],
+      "clip_ids": [
+        "veo_1767669361034_gxy4wy"
+      ],
+      "occurrence_count": 3,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Rainy Day Writer",
+      "description": "Woman with brown hair in cream turtleneck, sitting in cafe with laptop and coffee, viewed through rain-streaked window",
+      "tags": [
+        "woman",
+        "cafe",
+        "laptop",
+        "rain",
+        "writer"
+      ]
+    },
+    "char_040": {
+      "character_id": "char_040",
+      "face_ids": [
+        "face_veo_1767669465440_zpys41_0.50_0",
+        "face_veo_1767669465440_zpys41_2.00_0",
+        "face_veo_1767669465440_zpys41_trimmed_0.50_0",
+        "face_veo_1767669465440_zpys41_trimmed_1.42_0"
+      ],
+      "clip_ids": [
+        "veo_1767669465440_zpys41",
+        "veo_1767669465440_zpys41_trimmed"
+      ],
+      "occurrence_count": 4,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "The Couple",
+      "description": "Asian woman and tall man with brown hair in grey sweater, modern kitchen setting, appears to be same woman as Mei",
+      "tags": [
+        "couple",
+        "kitchen",
+        "modern"
+      ]
+    },
+    "char_041": {
+      "character_id": "char_041",
+      "face_ids": [
+        "face_veo_1767749199870_w72r7e_5.50_0",
+        "face_veo_1767749277151_pxbqpr_0.50_0"
+      ],
+      "clip_ids": [
+        "veo_1767749277151_pxbqpr",
+        "veo_1767749199870_w72r7e"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Mama June",
+      "description": "Older Black woman with grey hair pulled back, denim shirt under brown leather vest, standing on road through golden wheat fields at sunset",
+      "tags": [
+        "woman",
+        "black",
+        "older",
+        "wise",
+        "rural"
+      ]
+    },
+    "char_042": {
+      "character_id": "char_042",
+      "face_ids": [
+        "face_veo_1767749277151_pxbqpr_4.00_0",
+        "face_veo_1767749277151_pxbqpr_7.50_0",
+        "face_veo_1767749366721_kz7mkx_0.50_0",
+        "face_veo_1767749366721_kz7mkx_7.50_0"
+      ],
+      "clip_ids": [
+        "veo_1767749277151_pxbqpr",
+        "veo_1767749366721_kz7mkx"
+      ],
+      "occurrence_count": 4,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Sunset Wanderer",
+      "description": "Man with long wavy dark hair and salt-pepper beard, olive green jacket over grey henley, standing in golden fields at sunset, content smile",
+      "tags": [
+        "man",
+        "long_hair",
+        "beard",
+        "sunset",
+        "fields"
+      ]
+    },
+    "char_043": {
+      "character_id": "char_043",
+      "face_ids": [
+        "face_veo_1767756950684_suvpky_0.50_0",
+        "face_veo_1767757793493_1gcd9w_0.50_0"
+      ],
+      "clip_ids": [
+        "veo_1767756950684_suvpky",
+        "veo_1767757793493_1gcd9w"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Worried Wendy",
+      "description": "Woman with dark hair pulled back, dark jacket, concerned/worried expression, suburban street at dusk, anxious demeanor",
+      "tags": [
+        "woman",
+        "worried",
+        "suburban",
+        "dusk"
+      ]
+    },
+    "char_044": {
+      "character_id": "char_044",
+      "face_ids": [
+        "face_veo_1767759481167_0ytxoj_0.50_0",
+        "face_veo_1767759481167_0ytxoj_2.00_0",
+        "face_veo_1767759481167_0ytxoj_3.60_0",
+        "face_veo_1767759510916_fb3mql_5.50_0",
+        "face_veo_1767759521334_pwf9ij_0.50_0",
+        "face_veo_1767759521334_pwf9ij_3.60_0",
+        "face_veo_1767759524084_xijea0_0.50_0"
+      ],
+      "clip_ids": [
+        "veo_1767759521334_pwf9ij",
+        "veo_1767759524084_xijea0",
+        "veo_1767759481167_0ytxoj",
+        "veo_1767759510916_fb3mql"
+      ],
+      "occurrence_count": 7,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "Margot",
+      "description": "Woman in burgundy dress with tan overcoat, rainy European cobblestone street, cinematic composition, sophisticated traveler",
+      "tags": [
+        "woman",
+        "elegant",
+        "rain",
+        "european",
+        "travel"
+      ]
+    },
+    "char_045": {
+      "character_id": "char_045",
+      "face_ids": [
+        "face_veo_1767763330475_55zjac_0.50_0",
+        "face_veo_1767763330475_55zjac_3.60_1"
+      ],
+      "clip_ids": [
+        "veo_1767763330475_55zjac"
+      ],
+      "occurrence_count": 2,
+      "representative_frame": null,
+      "metadata": {
+        "first_seen": "2026-01-13T10:37:54.289991",
+        "last_clustered": "2026-01-13T10:37:54.289991"
+      },
+      "name": "The Tommies",
+      "description": "WWI soldiers in sepia-toned image, helmets and uniforms, carrying wounded comrade across muddy battlefield with explosions, historical war scene",
+      "tags": [
+        "soldiers",
+        "wwi",
+        "historical",
+        "sepia",
+        "war"
+      ]
+    }
+  }
+}
