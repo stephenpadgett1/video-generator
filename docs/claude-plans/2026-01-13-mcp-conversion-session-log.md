@@ -38,7 +38,7 @@ Implemented all Phase 3B tools:
 - `src/services/locking.ts` - Character/environment locking with Gemini analysis
 - `src/services/execution.ts` - Full project execution orchestration
 
-**Tools Implemented (17 total):**
+**Tools Implemented (14 total):**
 
 | Category | Tools |
 |----------|-------|
@@ -47,23 +47,41 @@ Implemented all Phase 3B tools:
 | Locking (2) | `lock_character`, `lock_environment` |
 | Execution (1) | `execute_project` |
 
-**Key Features:**
-- Arc types and mood visuals extracted from Express server
-- Multi-take dialogue handling with frame chaining
-- Character/environment context injection for Veo prompts
-- Background job polling with async completion
+### 5. Audio, Analysis & Editing Tools (Phase 3C) ✓
+Implemented all Phase 3C tools:
 
-## Remaining Work: MCP Conversion (Phases 3C-E)
+**API Clients Created:**
+- `src/clients/elevenlabs.ts` - TTS and music generation with voice caching
 
-### Phase 3C: Audio + Analysis Tools
-- Audio tools (5): `get_voices`, `get_cached_voices`, `generate_tts`, `generate_music`, `compute_audio_profile`
-- Analysis tools (6): `transcribe`, `analyze_audio_timeline`, `analyze_dialogue_clip`, `analyze_clip_unified`, `analyze_video_gemini`, `analyze_cut_points`
-- Editing tools (7): `edit_start`, `edit_trim`, `edit_speed`, `edit_select`, `edit_analysis`, `edit_auto_analyze`, `get_edit_manifest`, `list_edits`
+**Services Created:**
+- `src/services/audio.ts` - Mood-aware voice/music profile computation
+- `src/services/analysis.ts` - Transcription, timeline analysis, unified clip analysis
+- `src/services/editing.ts` - Edit session management, trim/speed variations
 
-### Phase 3D: Assembly + Validation
-- Assembly tool (1): `assemble_video`
-- Validation tools (2): `validate_project`, `validate_project_by_id`
-- Utilities (1): `extract_frame`
+**Tools Implemented (18 total):**
+
+| Category | Tools |
+|----------|-------|
+| Audio (5) | `get_voices`, `get_cached_voices`, `generate_tts`, `generate_music`, `compute_audio_profile` |
+| Analysis (5) | `transcribe`, `analyze_audio_timeline`, `analyze_dialogue_clip`, `analyze_clip_unified`, `analyze_video_gemini` |
+| Editing (8) | `edit_start`, `edit_trim`, `edit_speed`, `edit_select`, `edit_store_analysis`, `edit_auto_analyze`, `get_edit_manifest`, `list_edits` |
+
+### 6. Assembly & Validation Tools (Phase 3D) ✓
+Implemented all Phase 3D tools:
+
+**Services Created:**
+- `src/services/assembly.ts` - Video concatenation, transitions, audio mixing
+- `src/services/projects.ts` - Project loading and type definitions
+- `src/services/validation.ts` - Full validator suite (structure, narrative, feasibility, audio, transitions, production, dialogue)
+
+**Tools Implemented (5 total):**
+
+| Category | Tools |
+|----------|-------|
+| Assembly (2) | `assemble_video`, `extract_frame` |
+| Validation (3) | `validate_project`, `validate_project_by_id`, `get_validation_constants` |
+
+## Remaining Work: Phase 3E (Cleanup)
 
 ### Phase 3E: Cleanup
 - Remove `server.js` and `routes/*.js`
@@ -71,14 +89,23 @@ Implemented all Phase 3B tools:
 - Update Skills to use MCP tools (not curl)
 - Update documentation
 
-## Key Files Created/Modified
+## Complete Tool Inventory
 
-| File | Change |
-|------|--------|
-| `.claude/rules/*.md` | 7 modular documentation files |
-| `.claude/settings.json` | Team permissions |
-| `.claude/skills/*/SKILL.md` | 3 Skills |
-| `mcp/video-generator/` | New MCP server |
+**Total: ~45 MCP tools**
+
+| Phase | Category | Count | Tools |
+|-------|----------|-------|-------|
+| 3A | Config | 2 | `get_config`, `save_config` |
+| 3A | Projects | 3 | `list_projects`, `get_project`, `save_project` |
+| 3B | Jobs | 3 | `create_job`, `get_job`, `list_jobs` |
+| 3B | Generation | 8 | `generate_structure`, `generate_veo_prompt`, `generate_frame_prompts`, `breakdown_shot`, `submit_veo_generation`, `check_veo_status`, `generate_image`, `analyze_image` |
+| 3B | Locking | 2 | `lock_character`, `lock_environment` |
+| 3B | Execution | 1 | `execute_project` |
+| 3C | Audio | 5 | `get_voices`, `get_cached_voices`, `generate_tts`, `generate_music`, `compute_audio_profile` |
+| 3C | Analysis | 5 | `transcribe`, `analyze_audio_timeline`, `analyze_dialogue_clip`, `analyze_clip_unified`, `analyze_video_gemini` |
+| 3C | Editing | 8 | `edit_start`, `edit_trim`, `edit_speed`, `edit_select`, `edit_store_analysis`, `edit_auto_analyze`, `get_edit_manifest`, `list_edits` |
+| 3D | Assembly | 2 | `assemble_video`, `extract_frame` |
+| 3D | Validation | 3 | `validate_project`, `validate_project_by_id`, `get_validation_constants` |
 
 ## Architecture Reference
 
@@ -87,37 +114,39 @@ mcp/video-generator/
 ├── src/
 │   ├── server.ts           # MCP entry point
 │   ├── tools/              # Tool definitions
-│   │   ├── config.ts       # ✓ Done
-│   │   ├── projects.ts     # ✓ Done
+│   │   ├── config.ts       # ✓ Done (Phase 3A)
+│   │   ├── projects.ts     # ✓ Done (Phase 3A)
 │   │   ├── jobs.ts         # ✓ Done (Phase 3B)
 │   │   ├── generation.ts   # ✓ Done (Phase 3B)
 │   │   ├── locking.ts      # ✓ Done (Phase 3B)
 │   │   ├── execution.ts    # ✓ Done (Phase 3B)
-│   │   ├── audio.ts        # TODO (Phase 3C)
-│   │   ├── analysis.ts     # TODO (Phase 3C)
-│   │   ├── editing.ts      # TODO (Phase 3C)
-│   │   ├── assembly.ts     # TODO (Phase 3D)
-│   │   └── validation.ts   # TODO (Phase 3D)
+│   │   ├── audio.ts        # ✓ Done (Phase 3C)
+│   │   ├── analysis.ts     # ✓ Done (Phase 3C)
+│   │   ├── editing.ts      # ✓ Done (Phase 3C)
+│   │   ├── assembly.ts     # ✓ Done (Phase 3D)
+│   │   └── validation.ts   # ✓ Done (Phase 3D)
 │   ├── clients/
 │   │   ├── google-auth.ts  # ✓ Done (Phase 3B)
 │   │   ├── claude.ts       # ✓ Done (Phase 3B)
 │   │   ├── veo.ts          # ✓ Done (Phase 3B)
 │   │   ├── gemini.ts       # ✓ Done (Phase 3B)
 │   │   ├── imagen.ts       # ✓ Done (Phase 3B)
-│   │   └── elevenlabs.ts   # TODO (Phase 3C)
+│   │   └── elevenlabs.ts   # ✓ Done (Phase 3C)
 │   ├── services/
 │   │   ├── jobs.ts         # ✓ Done (Phase 3B)
 │   │   ├── generation.ts   # ✓ Done (Phase 3B)
 │   │   ├── locking.ts      # ✓ Done (Phase 3B)
 │   │   ├── execution.ts    # ✓ Done (Phase 3B)
-│   │   ├── audio.ts        # TODO (Phase 3C)
-│   │   ├── analysis.ts     # TODO (Phase 3C)
-│   │   ├── editing.ts      # TODO (Phase 3C)
-│   │   └── assembly.ts     # TODO (Phase 3D)
+│   │   ├── audio.ts        # ✓ Done (Phase 3C)
+│   │   ├── analysis.ts     # ✓ Done (Phase 3C)
+│   │   ├── editing.ts      # ✓ Done (Phase 3C)
+│   │   ├── projects.ts     # ✓ Done (Phase 3D)
+│   │   ├── assembly.ts     # ✓ Done (Phase 3D)
+│   │   └── validation.ts   # ✓ Done (Phase 3D)
 │   └── utils/
-│       ├── config.ts       # ✓ Done
-│       └── paths.ts        # ✓ Done
-├── package.json            # Updated with jsonwebtoken
+│       ├── config.ts       # ✓ Done (Phase 3A)
+│       └── paths.ts        # ✓ Done (Phase 3A)
+├── package.json
 └── tsconfig.json
 ```
 
@@ -134,6 +163,6 @@ npx @modelcontextprotocol/inspector node dist/server.js
 ```
 
 ## Session State
-- Phase 3B complete
-- All 22 tools compile and register successfully
-- Ready for Phase 3C (Audio + Analysis) in next session
+- Phases 3A-3D complete
+- All ~45 tools compile and register successfully
+- Ready for Phase 3E (Cleanup) - requires removing old Express server
