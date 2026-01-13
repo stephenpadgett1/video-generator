@@ -1,7 +1,9 @@
-# Plan: Automate Frame Descriptions via Claude Vision API
+# Plan: Automate Frame Descriptions via Claude Vision API ✓ COMPLETE
 
 ## Goal
 Automate frame descriptions for 213 pending clips by calling Claude API (Opus 4.5) with vision support, replacing the manual "view frames → write descriptions" workflow.
+
+**Status:** Implemented and executed. All 282 clips now have frame descriptions via `describe_clip_frames` and `batch_describe_frames` tools.
 
 ## Files to Modify
 

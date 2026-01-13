@@ -234,12 +234,13 @@ const searchClipsTool = {
   name: "search_clips",
   description: `Search clip metadata with flexible queries.
 
-Supports full-text search in transcriptions and descriptions, filtering by speech, duration, project, and tags.`,
+Supports full-text search in transcriptions and descriptions, filtering by speech, duration, aspect ratio, project, and tags.`,
   inputSchema: {
     query: z.string().optional().describe("Full-text search in transcription and descriptions"),
     has_speech: z.boolean().optional().describe("Filter by clips with/without speech"),
     min_duration: z.number().optional().describe("Minimum duration in seconds"),
     max_duration: z.number().optional().describe("Maximum duration in seconds"),
+    aspect_ratio: z.enum(["16:9", "9:16", "1:1"]).optional().describe("Filter by aspect ratio"),
     project_id: z.string().optional().describe("Filter by project ID"),
     tags: z.array(z.string()).optional().describe("Filter by tags (match any)"),
     limit: z.number().optional().default(20).describe("Maximum results to return"),

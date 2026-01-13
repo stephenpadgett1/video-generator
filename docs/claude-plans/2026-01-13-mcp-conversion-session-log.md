@@ -243,13 +243,58 @@ Implemented a comprehensive clip metadata extraction and search system for the 2
 3. Generate descriptions for each frame
 4. Call `complete_clip_metadata(clipId, descriptions)` to save
 
-**Progress:**
-- Initial batch extraction completed for all 278 clips
-- Metadata stored in `docs/clip-metadata/clips.json` (258KB)
-- Ready for frame description pass
+**Progress:** ✓ Complete
+- All 282 clips have full metadata with frame descriptions
+- Face detection and character clustering implemented
+- 45 characters auto-detected across clips
 
 ### Session State
-- Clip metadata tools implemented and registered
-- Batch extraction complete
-- Frame descriptions pending (manual Claude viewing step)
+- Clip metadata system fully operational
 - build_v5.sh is a local workflow script (not committed)
+
+---
+
+## Session 4: Face Detection & Character Clustering (2026-01-13)
+
+### Accomplishments
+
+Implemented face detection and character clustering to automatically identify recurring characters across clips.
+
+**New MCP Tools (8 total):**
+
+| Tool | Purpose |
+|------|---------|
+| `detect_faces_in_clip` | Detect faces and compute embeddings for a single clip |
+| `batch_detect_faces` | Process multiple clips for face detection |
+| `cluster_characters` | Group faces into character clusters using DBSCAN |
+| `list_characters` | List all detected characters with occurrence counts |
+| `get_character` | Get detailed info about a character including clips |
+| `update_character` | Add name, description, tags to a character |
+| `search_clips_by_character` | Find all clips containing a specific character |
+| `find_character_by_image` | Match a face image to known characters |
+
+**New MCP Tools for Frame Descriptions (2 total):**
+
+| Tool | Purpose |
+|------|---------|
+| `describe_clip_frames` | Generate frame descriptions via Claude Vision API |
+| `batch_describe_frames` | Process multiple clips with rate limiting |
+
+**Files Created:**
+- `mcp/video-generator/src/services/face-detection.ts` - Face detection service calling Python
+- `mcp/video-generator/src/services/character-clustering.ts` - DBSCAN clustering + character management
+- `mcp/video-generator/src/tools/face-detection.ts` - MCP tool definitions
+- `scripts/face-detection/detect_faces.py` - Python script using face_recognition library
+- `scripts/face-detection/requirements.txt` - Python dependencies
+- `docs/clip-metadata/characters.json` - Character database
+
+**Results:**
+- 282 clips processed for metadata extraction
+- Face detection completed on clips with extracted frames
+- 45 unique characters identified via clustering
+- Characters linked to clips in metadata
+
+### Session State
+- Clip metadata system complete with frame descriptions
+- Face detection and character clustering operational
+- Ready for character-based video production workflows

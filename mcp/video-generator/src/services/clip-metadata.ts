@@ -776,6 +776,7 @@ export interface SearchOptions {
   max_duration?: number;
   project_id?: string;
   tags?: string[];
+  aspect_ratio?: "16:9" | "9:16" | "1:1";
   limit?: number;
 }
 
@@ -790,7 +791,7 @@ export function searchClips(options: SearchOptions): {
   results: SearchResult[];
   total_matches: number;
 } {
-  const { query, has_speech, min_duration, max_duration, project_id, tags, limit = 20 } = options;
+  const { query, has_speech, min_duration, max_duration, project_id, tags, aspect_ratio, limit = 20 } = options;
 
   const db = loadClipsDatabase();
   const index = loadClipIndex();
@@ -823,6 +824,7 @@ export function searchClips(options: SearchOptions): {
     if (max_duration !== undefined && metadata.technical.duration > max_duration) continue;
     if (has_speech !== undefined && metadata.audio.has_speech !== has_speech) continue;
     if (project_id && metadata.provenance.project_id !== project_id) continue;
+    if (aspect_ratio && metadata.technical.aspect_ratio !== aspect_ratio) continue;
 
     let score = 0.5;
     let snippet = "";

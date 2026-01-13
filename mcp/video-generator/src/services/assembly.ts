@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { VIDEO_DIR, AUDIO_DIR, EXPORTS_DIR, resolvePath } from "../utils/paths.js";
+import { VIDEO_DIR, AUDIO_DIR, EXPORTS_DIR, TEMP_DIR, resolvePath } from "../utils/paths.js";
 import { loadProject, type Project, type Shot } from "./projects.js";
 import { loadManifest, getEditDir } from "./editing.js";
 import { generateTTS, computeVoiceSettings } from "./audio.js";
@@ -525,4 +525,144 @@ export async function extractFrame(
   await execAsync(cmd);
 
   return output;
+}
+
+// ============================================================================
+// Title Card Generation
+// ============================================================================
+
+export interface TitleCardLine {
+  text: string;
+  size?: number;
+  color?: string;
+}
+
+export interface TitleCardOptions {
+  title: string;
+  subtitle?: string;
+  duration?: number;
+  aspectRatio?: "16:9" | "9:16" | "1:1";
+  style?: "minimal" | "centered" | "credits";
+  lines?: TitleCardLine[];
+  outputFilename?: string;
+}
+
+export interface TitleCardResult {
+  success: boolean;
+  path: string;
+  filename: string;
+  duration: number;
+  aspectRatio: string;
+}
+
+/**
+ * Get resolution dimensions for aspect ratio
+ */
+function getResolution(aspectRatio: "16:9" | "9:16" | "1:1"): { width: number; height: number } {
+  switch (aspectRatio) {
+    case "16:9":
+      return { width: 1920, height: 1080 };
+    case "9:16":
+      return { width: 720, height: 1280 };
+    case "1:1":
+      return { width: 1080, height: 1080 };
+    default:
+      return { width: 720, height: 1280 };
+  }
+}
+
+/**
+ * Escape text for FFmpeg drawtext filter
+ */
+function escapeDrawtext(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "'\\''");
+}
+
+/**
+ * Generate a title card video with text overlay
+ */
+export async function generateTitleCard(options: TitleCardOptions): Promise<TitleCardResult> {
+  const {
+    title,
+    subtitle,
+    duration = 2,
+    aspectRatio = "9:16",
+    style = "centered",
+    lines,
+    outputFilename,
+  } = options;
+
+  const { width, height } = getResolution(aspectRatio);
+  const filename = outputFilename || `title_card_${Date.now()}.mp4`;
+  const outputPath = path.join(TEMP_DIR, filename);
+
+  // Ensure temp directory exists
+  if (!fs.existsSync(TEMP_DIR)) {
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
+  }
+
+  // Build drawtext filters
+  const filters: string[] = [];
+
+  if (lines && lines.length > 0) {
+    // Custom multi-line layout
+    const totalHeight = lines.length * 50; // Approximate line spacing
+    let yOffset = (height - totalHeight) / 2;
+
+    for (const line of lines) {
+      const size = line.size || 36;
+      const color = line.color || "white";
+      const escapedText = escapeDrawtext(line.text);
+      filters.push(
+        `drawtext=text='${escapedText}':fontcolor=${color}:fontsize=${size}:x=(w-tw)/2:y=${Math.round(yOffset)}:font=Helvetica`
+      );
+      yOffset += size + 15; // Line height + spacing
+    }
+  } else {
+    // Standard title/subtitle layout
+    const titleSize = style === "credits" ? 36 : 72;
+    const subtitleSize = style === "credits" ? 28 : 32;
+    const titleY = subtitle ? `(h/2)-50` : `(h-th)/2`;
+    const subtitleY = `(h/2)+30`;
+
+    const escapedTitle = escapeDrawtext(title);
+    filters.push(
+      `drawtext=text='${escapedTitle}':fontcolor=white:fontsize=${titleSize}:x=(w-tw)/2:y=${titleY}:font=Helvetica`
+    );
+
+    if (subtitle) {
+      const escapedSubtitle = escapeDrawtext(subtitle);
+      filters.push(
+        `drawtext=text='${escapedSubtitle}':fontcolor=gray:fontsize=${subtitleSize}:x=(w-tw)/2:y=${subtitleY}:font=Helvetica`
+      );
+    }
+  }
+
+  const filterString = filters.join(",");
+
+  // Build FFmpeg command
+  const cmd = [
+    "ffmpeg -y",
+    `-f lavfi -i "color=c=black:s=${width}x${height}:r=24:d=${duration}"`,
+    `-f lavfi -i "anullsrc=r=48000:cl=stereo"`,
+    `-vf "${filterString}"`,
+    "-c:v libx264 -c:a aac",
+    `-t ${duration}`,
+    "-pix_fmt yuv420p",
+    "-shortest",
+    `"${outputPath}"`,
+  ].join(" ");
+
+  await execAsync(cmd);
+
+  return {
+    success: true,
+    path: outputPath,
+    filename,
+    duration,
+    aspectRatio,
+  };
 }

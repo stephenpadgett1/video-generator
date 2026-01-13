@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { assembleVideo, extractFrame } from "../services/assembly.js";
+import { assembleVideo, extractFrame, generateTitleCard } from "../services/assembly.js";
 
 /**
  * Assembly tools - video assembly with transitions, audio layers, and frame extraction
@@ -141,6 +141,71 @@ export const assemblyTools = {
             {
               type: "text" as const,
               text: `Error extracting frame: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+        };
+      }
+    },
+  },
+
+  generate_title_card: {
+    name: "generate_title_card",
+    title: "Generate Title Card",
+    description: `Generate a title card video (black background with white text).
+
+Creates an MP4 with silent audio track, ready for use in video assembly.
+Supports simple title/subtitle layout or custom multi-line layouts for credits.`,
+    inputSchema: {
+      title: z.string().describe("Main title text"),
+      subtitle: z.string().optional().describe("Secondary text below title"),
+      duration: z.number().optional().default(2).describe("Duration in seconds (default: 2)"),
+      aspectRatio: z
+        .enum(["16:9", "9:16", "1:1"])
+        .optional()
+        .default("9:16")
+        .describe("Video aspect ratio (default: 9:16)"),
+      style: z
+        .enum(["minimal", "centered", "credits"])
+        .optional()
+        .default("centered")
+        .describe("Text style - 'credits' uses smaller text suitable for end cards"),
+      lines: z
+        .array(
+          z.object({
+            text: z.string().describe("Line text"),
+            size: z.number().optional().describe("Font size (default: 36)"),
+            color: z.string().optional().describe("Font color (default: white)"),
+          })
+        )
+        .optional()
+        .describe("Custom multi-line layout (overrides title/subtitle)"),
+      outputFilename: z.string().optional().describe("Custom output filename"),
+    },
+    handler: async (args: {
+      title: string;
+      subtitle?: string;
+      duration?: number;
+      aspectRatio?: "16:9" | "9:16" | "1:1";
+      style?: "minimal" | "centered" | "credits";
+      lines?: Array<{ text: string; size?: number; color?: string }>;
+      outputFilename?: string;
+    }) => {
+      try {
+        const result = await generateTitleCard(args);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error generating title card: ${error instanceof Error ? error.message : "Unknown error"}`,
             },
           ],
         };

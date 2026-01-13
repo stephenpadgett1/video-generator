@@ -375,6 +375,7 @@ const searchClipsByCharacterTool = {
   },
   handler: async (args: { characterId: string }) => {
     const clipIds = searchClipsByCharacter(args.characterId);
+    const character = getCharacter(args.characterId);
 
     return {
       content: [
@@ -383,6 +384,7 @@ const searchClipsByCharacterTool = {
           text: JSON.stringify(
             {
               character_id: args.characterId,
+              character_name: character?.name || null,
               clip_count: clipIds.length,
               clip_ids: clipIds,
             },

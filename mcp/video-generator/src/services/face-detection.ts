@@ -675,12 +675,14 @@ export function searchClipsByCharacter(characterId: string): string[] {
  */
 export function listCharacters(): Array<{
   character_id: string;
+  name: string | null;
   occurrence_count: number;
   clip_count: number;
 }> {
   const charDb = loadCharacterDatabase();
   return Object.values(charDb.characters).map((char) => ({
     character_id: char.character_id,
+    name: char.name || null,
     occurrence_count: char.occurrence_count,
     clip_count: char.clip_ids.length,
   }));
