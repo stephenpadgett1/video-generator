@@ -81,13 +81,23 @@ Implemented all Phase 3D tools:
 | Assembly (2) | `assemble_video`, `extract_frame` |
 | Validation (3) | `validate_project`, `validate_project_by_id`, `get_validation_constants` |
 
-## Remaining Work: Phase 3E (Cleanup)
+### 7. Migration to MCP-Only Architecture (Phase 3E) ✓
+Removed Express HTTP server and migrated to MCP-only:
 
-### Phase 3E: Cleanup
-- Remove `server.js` and `routes/*.js`
-- Update `.mcp.json` to include new server
-- Update Skills to use MCP tools (not curl)
-- Update documentation
+**Removed:**
+- `server.js` (161KB Express server with ~50 HTTP endpoints)
+- `routes/*.js` (6 route files)
+- Helper scripts: `analyze-clips.js`, `audio-rules.js`, `dialogue-splitter.js`, `validators.js`
+- Old MCP files: `mcp/server.ts`, `mcp/README.md`
+
+**Updated:**
+- `.mcp.json` - Added video-generator MCP server
+- `package.json` - Removed Express dependencies, updated scripts
+- `CLAUDE.md` - Updated for MCP architecture
+- Skills - Updated to use MCP tools instead of curl
+- Documentation - Updated core-workflow.md, editing-system.md
+
+**Net change:** -8953 lines deleted, +278 lines added
 
 ## Complete Tool Inventory
 
@@ -113,39 +123,10 @@ Implemented all Phase 3D tools:
 mcp/video-generator/
 ├── src/
 │   ├── server.ts           # MCP entry point
-│   ├── tools/              # Tool definitions
-│   │   ├── config.ts       # ✓ Done (Phase 3A)
-│   │   ├── projects.ts     # ✓ Done (Phase 3A)
-│   │   ├── jobs.ts         # ✓ Done (Phase 3B)
-│   │   ├── generation.ts   # ✓ Done (Phase 3B)
-│   │   ├── locking.ts      # ✓ Done (Phase 3B)
-│   │   ├── execution.ts    # ✓ Done (Phase 3B)
-│   │   ├── audio.ts        # ✓ Done (Phase 3C)
-│   │   ├── analysis.ts     # ✓ Done (Phase 3C)
-│   │   ├── editing.ts      # ✓ Done (Phase 3C)
-│   │   ├── assembly.ts     # ✓ Done (Phase 3D)
-│   │   └── validation.ts   # ✓ Done (Phase 3D)
-│   ├── clients/
-│   │   ├── google-auth.ts  # ✓ Done (Phase 3B)
-│   │   ├── claude.ts       # ✓ Done (Phase 3B)
-│   │   ├── veo.ts          # ✓ Done (Phase 3B)
-│   │   ├── gemini.ts       # ✓ Done (Phase 3B)
-│   │   ├── imagen.ts       # ✓ Done (Phase 3B)
-│   │   └── elevenlabs.ts   # ✓ Done (Phase 3C)
-│   ├── services/
-│   │   ├── jobs.ts         # ✓ Done (Phase 3B)
-│   │   ├── generation.ts   # ✓ Done (Phase 3B)
-│   │   ├── locking.ts      # ✓ Done (Phase 3B)
-│   │   ├── execution.ts    # ✓ Done (Phase 3B)
-│   │   ├── audio.ts        # ✓ Done (Phase 3C)
-│   │   ├── analysis.ts     # ✓ Done (Phase 3C)
-│   │   ├── editing.ts      # ✓ Done (Phase 3C)
-│   │   ├── projects.ts     # ✓ Done (Phase 3D)
-│   │   ├── assembly.ts     # ✓ Done (Phase 3D)
-│   │   └── validation.ts   # ✓ Done (Phase 3D)
-│   └── utils/
-│       ├── config.ts       # ✓ Done (Phase 3A)
-│       └── paths.ts        # ✓ Done (Phase 3A)
+│   ├── tools/              # Tool definitions (11 files)
+│   ├── clients/            # API clients (6 files)
+│   ├── services/           # Business logic (10 files)
+│   └── utils/              # Utilities (2 files)
 ├── package.json
 └── tsconfig.json
 ```
@@ -156,13 +137,14 @@ mcp/video-generator/
 cd mcp/video-generator
 npm install
 npm run build
-npm run dev  # Starts on stdio
 
 # Test with inspector
 npx @modelcontextprotocol/inspector node dist/server.js
 ```
 
 ## Session State
-- Phases 3A-3D complete
-- All ~45 tools compile and register successfully
-- Ready for Phase 3E (Cleanup) - requires removing old Express server
+- All phases (3A-3E) complete
+- Express server removed
+- MCP-only architecture in place
+- ~45 tools available via video-generator MCP server
+- Ready for production testing
