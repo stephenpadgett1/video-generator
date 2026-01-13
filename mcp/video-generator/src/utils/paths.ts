@@ -21,6 +21,14 @@ export const JOBS_PATH = path.join(PROJECT_ROOT, "jobs.json");
 // Generated content
 export const GENERATED_IMAGES_DIR = path.join(PROJECT_ROOT, "generated-images");
 
+// Clip metadata (git-tracked)
+export const CLIP_METADATA_DIR = path.join(PROJECT_ROOT, "docs/clip-metadata");
+export const CLIPS_JSON_PATH = path.join(CLIP_METADATA_DIR, "clips.json");
+export const CLIP_METADATA_INDEX_PATH = path.join(CLIP_METADATA_DIR, "index.json");
+
+// Temp files
+export const TEMP_DIR = path.join(DATA_DIR, "temp");
+
 // Ensure a path is absolute (relative to project root if not)
 export function resolvePath(filepath: string): string {
   if (path.isAbsolute(filepath)) {

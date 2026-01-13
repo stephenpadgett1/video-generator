@@ -14,6 +14,7 @@ import { analysisTools } from "./tools/analysis.js";
 import { editingTools } from "./tools/editing.js";
 import { assemblyTools } from "./tools/assembly.js";
 import { validationTools } from "./tools/validation.js";
+import { clipMetadataTools } from "./tools/clip-metadata.js";
 
 // Create MCP server
 const server = new McpServer({
@@ -57,6 +58,9 @@ registerTools(editingTools as unknown as Record<string, ToolDef>);
 // Phase 3D: Assembly, validation
 registerTools(assemblyTools as unknown as Record<string, ToolDef>);
 registerTools(validationTools as unknown as Record<string, ToolDef>);
+
+// Clip metadata tools
+registerTools(clipMetadataTools as unknown as Record<string, ToolDef>);
 
 // Start server
 async function main() {
