@@ -1,16 +1,13 @@
 {
   "name": "video-pipeline",
-  "version": "0.1.0",
-  "description": "Autonomous short-form video generation pipeline",
-  "main": "server.js",
+  "version": "1.0.0",
+  "description": "AI video production pipeline using MCP (Model Context Protocol)",
+  "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "build": "cd mcp/video-generator && npm run build",
+    "start": "cd mcp/video-generator && npm run dev",
+    "mcp": "cd mcp/video-generator && node dist/server.js"
   },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "form-data": "^4.0.5",
-    "jsonwebtoken": "^9.0.2"
-  }
+  "keywords": ["mcp", "video", "ai", "veo", "claude"],
+  "license": "MIT"
 }

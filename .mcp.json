@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "video-generator": {
+      "command": "node",
+      "args": ["mcp/video-generator/dist/server.js"]
+    },
     "veo-clips": {
       "command": "node",
       "args": ["mcp/veo-clips-mcp/dist/server.js"]

@@ -12,35 +12,18 @@ data/edits/{job_id}/
   v002_trim_speed.mp4     # Variation: trimmed + speed adjusted
 ```
 
-## API Endpoints
+## MCP Tools
 
-```
-POST /api/edit/start
-  { job_id, project_id?, shot_id?, take_index?, expected_dialogue? }
-  → Creates edit folder, copies source, initializes manifest
-
-POST /api/edit/trim
-  { job_id, trim_start, trim_end?, notes? }
-  → Renders trimmed variation via ffmpeg
-
-POST /api/edit/speed
-  { job_id, base_variation?, speed, notes? }
-  → Creates speed-adjusted variation (can stack on previous)
-
-POST /api/edit/select
-  { job_id, variation_id }
-  → Marks variation as selected for assembly
-
-POST /api/edit/analysis
-  { job_id, analysis }
-  → Store analysis results (from cut-point-analyzer)
-
-GET /api/edit/:job_id
-  → Returns manifest
-
-GET /api/edit
-  → Lists all edit folders with status
-```
+| Tool | Input | Output |
+|------|-------|--------|
+| `edit_start` | job_id, project_id?, shot_id?, take_index?, expected_dialogue? | Creates edit folder, copies source |
+| `edit_trim` | job_id, trim_start?, trim_end?, notes?, precise? | Renders trimmed variation |
+| `edit_speed` | job_id, base_variation?, speed, notes? | Creates speed-adjusted variation |
+| `edit_select` | job_id, variation_id | Marks variation as selected |
+| `edit_store_analysis` | job_id, analysis | Store analysis results |
+| `edit_auto_analyze` | job_id, apply_suggestions?, context? | Analyze and optionally auto-trim |
+| `get_edit_manifest` | job_id | Returns manifest |
+| `list_edits` | - | Lists all edit folders |
 
 ## Assembly Integration
 
@@ -71,6 +54,17 @@ Assembly automatically checks for edited variations. When loading shots from a p
 ```
 
 **Status values:** `pending`, `in_progress`, `review`, `approved`, `archived`
+
+## Trim Options
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `trim_start` | 0 | Start time in seconds |
+| `trim_end` | source duration | End time in seconds |
+| `precise` | false | Re-encode for frame-accurate cuts |
+
+When `precise: false` (default), uses stream copy which is fast but snaps to keyframes.
+When `precise: true`, re-encodes for exact timestamps (slower).
 
 ## Agent Annotations
 

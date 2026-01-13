@@ -1,7 +1,7 @@
 ---
 name: edit-clip
 description: Create trimmed or speed-adjusted variations of video clips. Use when editing clips, trimming videos, adjusting speed, or creating clip variations.
-allowed-tools: Read, Bash(curl:*)
+allowed-tools: Read, mcp__video-generator__*
 context: fork
 agent: general-purpose
 ---
@@ -14,58 +14,66 @@ Create variations (trim, speed) of generated video clips.
 
 ### Initialize Edit
 
-```bash
-curl -X POST http://localhost:3000/api/edit/start \
-  -H "Content-Type: application/json" \
-  -d '{"job_id": "job_abc123"}'
+```
+Tool: edit_start
+Args: { "job_id": "job_abc123" }
 ```
 
 ### Trim Clip
 
-```bash
-curl -X POST http://localhost:3000/api/edit/trim \
-  -H "Content-Type: application/json" \
-  -d '{
-    "job_id": "job_abc123",
-    "trim_start": 0.5,
-    "trim_end": 7.2
-  }'
+```
+Tool: edit_trim
+Args: {
+  "job_id": "job_abc123",
+  "trim_start": 0.5,
+  "trim_end": 7.2
+}
 ```
 
 ### Adjust Speed
 
-```bash
-curl -X POST http://localhost:3000/api/edit/speed \
-  -H "Content-Type: application/json" \
-  -d '{
-    "job_id": "job_abc123",
-    "speed": 1.5
-  }'
+```
+Tool: edit_speed
+Args: {
+  "job_id": "job_abc123",
+  "speed": 1.5
+}
 ```
 
 ### Select for Assembly
 
-```bash
-curl -X POST http://localhost:3000/api/edit/select \
-  -H "Content-Type: application/json" \
-  -d '{
-    "job_id": "job_abc123",
-    "variation_id": "v001"
-  }'
+```
+Tool: edit_select
+Args: {
+  "job_id": "job_abc123",
+  "variation_id": "v001"
+}
 ```
 
 ## Auto-Analyze & Edit
 
 Analyze clip and auto-create trim variation:
 
-```bash
-curl -X POST http://localhost:3000/api/edit/auto-analyze \
-  -H "Content-Type: application/json" \
-  -d '{
-    "job_id": "job_abc123",
-    "apply_suggestions": true
-  }'
 ```
+Tool: edit_auto_analyze
+Args: {
+  "job_id": "job_abc123",
+  "apply_suggestions": true
+}
+```
+
+## Available Edit Tools
+
+| Tool | Purpose |
+|------|---------|
+| `edit_start` | Initialize edit session |
+| `edit_trim` | Create trimmed variation |
+| `edit_speed` | Create speed-adjusted variation |
+| `edit_select` | Select variation for assembly |
+| `edit_store_analysis` | Store analysis results |
+| `edit_auto_analyze` | Analyze and auto-trim |
+| `get_edit_manifest` | Get edit manifest |
+| `list_edits` | List all edit sessions |
 
 ## Edit Folder Structure
 
@@ -77,4 +85,14 @@ data/edits/{job_id}/
 └── v002_speed.mp4     # Speed adjusted
 ```
 
-See `.claude/rules/editing-system.md` for full API reference.
+## Trim Options
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `trim_start` | 0 | Start time in seconds |
+| `trim_end` | source duration | End time in seconds |
+| `precise` | false | Re-encode for frame-accurate cuts |
+
+When `precise: true`, uses re-encoding (slower but exact). Otherwise uses stream copy (fast but keyframe-aligned).
+
+See `.claude/rules/editing-system.md` for full reference.
