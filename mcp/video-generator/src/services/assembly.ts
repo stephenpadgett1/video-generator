@@ -223,7 +223,7 @@ async function applyCrossfade(
   const clip1Duration = await getVideoDuration(clip1);
   const offset = Math.max(0, clip1Duration - duration);
 
-  const cmd = `ffmpeg -y -i "${clip1}" -i "${clip2}" -filter_complex "[0:v][1:v]xfade=transition=fade:duration=${duration}:offset=${offset}[v];[0:a][1:a]acrossfade=d=${duration}[a]" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 23 -c:a aac "${outputPath}"`;
+  const cmd = `ffmpeg -y -i "${clip1}" -i "${clip2}" -filter_complex "[0:v][1:v]xfade=transition=fade:duration=${duration}:offset=${offset}[v];[0:a][1:a]acrossfade=d=${duration}[a]" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -c:a aac "${outputPath}"`;
   await execAsync(cmd);
 }
 
@@ -326,7 +326,7 @@ async function applyTextOverlays(
     return `drawtext=text='${overlay.text.replace(/'/g, "\\'")}':fontsize=(w/36):fontcolor=white:borderw=2:x=(w-tw)/2:y=${y}:enable='between(t,${overlay.startTime},${endTime})'`;
   });
 
-  const cmd = `ffmpeg -y -i "${videoPath}" -vf "${filters.join(",")}" -c:v libx264 -preset fast -crf 23 -c:a copy "${outputPath}"`;
+  const cmd = `ffmpeg -y -i "${videoPath}" -vf "${filters.join(",")}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -c:a copy "${outputPath}"`;
   await execAsync(cmd);
 }
 
