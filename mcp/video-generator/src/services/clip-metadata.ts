@@ -25,6 +25,12 @@ import {
   JOBS_PATH,
 } from "../utils/paths.js";
 import { analyzeClipUnified } from "./analysis.js";
+import {
+  callClaudeVision,
+  loadImageAsBase64,
+  parseClaudeJson,
+  type RateLimitConfig,
+} from "../clients/claude.js";
 
 const execAsync = promisify(exec);
 
@@ -953,4 +959,165 @@ export async function batchExtractMetadata(options: {
   }
 
   return { clips: results, processed, skipped, failed };
+}
+
+// ============================================================================
+// Auto Frame Description via Claude Vision
+// ============================================================================
+
+export interface DescribeFramesResult {
+  clipId: string;
+  descriptions: FrameDescription[];
+  overallSummary: string;
+  tokensUsed: { input: number; output: number };
+}
+
+export interface DescribeFramesOptions {
+  model?: string;
+  rateLimitConfig?: Partial<RateLimitConfig>;
+}
+
+/**
+ * Generate frame descriptions for a clip using Claude Vision API
+ *
+ * Loads partial metadata and frame images, sends to Claude Opus 4.5,
+ * and returns structured descriptions.
+ */
+export async function describeClipFrames(
+  clipId: string,
+  options: DescribeFramesOptions = {}
+): Promise<DescribeFramesResult> {
+  const { model = "claude-opus-4-5-20251101", rateLimitConfig } = options;
+
+  // Load partial metadata
+  const tempPath = path.join(TEMP_DIR, `partial_${clipId}.json`);
+  if (!fs.existsSync(tempPath)) {
+    throw new Error(`No pending extraction found for clip: ${clipId}`);
+  }
+
+  const partial: PartialClipMetadata = JSON.parse(fs.readFileSync(tempPath, "utf-8"));
+
+  // Validate frame paths exist
+  const validFrames = partial.frame_paths.filter((fp) => fs.existsSync(fp));
+  if (validFrames.length === 0) {
+    throw new Error(`No frame files found for clip: ${clipId}. Expected frames at: ${partial.frame_paths[0]}`);
+  }
+
+  // Build content blocks: all images + prompt
+  const imageContents = validFrames.map((fp) => loadImageAsBase64(fp));
+
+  // Build frame context reference
+  const frameContextList = partial.frame_contexts
+    .map((fc, i) => `Frame ${i + 1}: timestamp=${fc.timestamp.toFixed(2)}s, context="${fc.context}"`)
+    .join("\n");
+
+  // Build structured prompt with clip context
+  const promptText = `Analyze the ${validFrames.length} video frames shown above.
+
+Clip info:
+- Duration: ${partial.technical.duration.toFixed(2)}s
+- Resolution: ${partial.technical.resolution.width}x${partial.technical.resolution.height}
+- Aspect ratio: ${partial.technical.aspect_ratio}
+- Has speech: ${partial.audio.has_speech}
+${partial.audio.transcription?.full_text ? `- Transcription: "${partial.audio.transcription.full_text.slice(0, 500)}"` : ""}
+${partial.visual.scene_changes.length > 0 ? `- Scene changes at: ${partial.visual.scene_changes.map((s) => s.timestamp.toFixed(2) + "s").join(", ")}` : ""}
+${partial.visual.black_frames.length > 0 ? `- Black frames detected: ${partial.visual.black_frames.length}` : ""}
+
+Frame positions:
+${frameContextList}
+
+Provide a JSON response with:
+1. A description for each frame (50-100 words each) covering:
+   - Subject appearance, position, and actions
+   - Environment/setting details
+   - Lighting, colors, composition
+   - Camera angle and framing
+   - Motion or action implied
+
+2. An overall summary of the entire clip (2-3 sentences)
+
+Response format:
+{
+  "descriptions": [
+    { "timestamp": <number>, "description": "<50-100 words>", "context": "<start|middle|end|pre_discontinuity|post_discontinuity>" }
+  ],
+  "overall_summary": "<2-3 sentences>"
+}`;
+
+  const systemPrompt = `You are a video clip analyst. Describe video frames with precise, objective visual details.
+Focus on what is actually visible in each frame. Be specific about colors, positions, subjects, and actions.
+Respond ONLY with valid JSON matching the requested schema. No markdown, no explanation outside the JSON.`;
+
+  const messages = [
+    {
+      role: "user" as const,
+      content: [
+        ...imageContents,
+        { type: "text" as const, text: promptText },
+      ],
+    },
+  ];
+
+  const response = await callClaudeVision({
+    system: systemPrompt,
+    messages,
+    model,
+    maxTokens: 4096,
+    temperature: 0.3,
+    rateLimitConfig,
+  });
+
+  // Parse the JSON response
+  const result = parseClaudeJson<{
+    descriptions: Array<{ timestamp: number; description: string; context: string }>;
+    overall_summary: string;
+  }>(response.text);
+
+  // Validate and normalize descriptions
+  const descriptions: FrameDescription[] = result.descriptions.map((d, i) => ({
+    timestamp: d.timestamp ?? partial.frame_contexts[i]?.timestamp ?? 0,
+    description: d.description,
+    context: (d.context as FrameDescription["context"]) || partial.frame_contexts[i]?.context || "middle",
+  }));
+
+  return {
+    clipId,
+    descriptions,
+    overallSummary: result.overall_summary,
+    tokensUsed: {
+      input: response.usage.input_tokens,
+      output: response.usage.output_tokens,
+    },
+  };
+}
+
+/**
+ * List all pending clips that need frame descriptions
+ */
+export function listPendingClips(): Array<{
+  clipId: string;
+  frameCount: number;
+  projectId: string | null;
+}> {
+  if (!fs.existsSync(TEMP_DIR)) return [];
+
+  const partialFiles = fs.readdirSync(TEMP_DIR).filter(
+    (f) => f.startsWith("partial_") && f.endsWith(".json")
+  );
+
+  return partialFiles.map((f) => {
+    const clipId = f.replace("partial_", "").replace(".json", "");
+    try {
+      const partial: PartialClipMetadata = JSON.parse(
+        fs.readFileSync(path.join(TEMP_DIR, f), "utf-8")
+      );
+      return {
+        clipId,
+        frameCount: partial.frame_paths.length,
+        projectId: partial.provenance.project_id,
+      };
+    } catch {
+      return { clipId, frameCount: 0, projectId: null };
+    }
+  });
 }

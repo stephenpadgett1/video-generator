@@ -14,6 +14,8 @@ import {
   batchExtractMetadata,
   savePartialMetadata,
   listClipsWithMetadata,
+  describeClipFrames,
+  listPendingClips,
   type FrameDescription,
   type ClipMetadata,
   type SearchOptions,
@@ -393,6 +395,236 @@ const listClipMetadataTool = {
 };
 
 // ============================================================================
+// Tool: describe_clip_frames
+// ============================================================================
+
+const describeClipFramesTool = {
+  name: "describe_clip_frames",
+  description: `Generate frame descriptions for a single clip using Claude Vision API (Opus 4.5).
+
+Reads partial metadata from data/temp/partial_{clipId}.json, sends extracted frame images to Claude,
+and returns structured descriptions.
+
+Use autoComplete=true to automatically save the metadata, or false to review first.`,
+  inputSchema: {
+    clipId: z.string().describe("Clip ID (filename without extension)"),
+    model: z
+      .string()
+      .optional()
+      .default("claude-opus-4-5-20251101")
+      .describe("Claude model to use"),
+    autoComplete: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Automatically save to clips.json (skip review)"),
+  },
+  handler: async (args: { clipId: string; model?: string; autoComplete?: boolean }) => {
+    const result = await describeClipFrames(args.clipId, { model: args.model });
+
+    if (args.autoComplete) {
+      const metadata = await completeClipMetadata(
+        args.clipId,
+        result.descriptions,
+        result.overallSummary
+      );
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                status: "completed",
+                clip_id: metadata.clip_id,
+                descriptions: result.descriptions,
+                overall_summary: result.overallSummary,
+                tags: metadata.tags,
+                tokens_used: result.tokensUsed,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(
+            {
+              status: "pending_review",
+              clip_id: args.clipId,
+              descriptions: result.descriptions,
+              overall_summary: result.overallSummary,
+              tokens_used: result.tokensUsed,
+              next_step: "Call complete_clip_metadata to save, or edit descriptions first",
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
+  },
+};
+
+// ============================================================================
+// Tool: batch_describe_frames
+// ============================================================================
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const batchDescribeFramesTool = {
+  name: "batch_describe_frames",
+  description: `Process multiple pending clips with Claude Vision API.
+
+Reads all partial_*.json files from data/temp/, generates descriptions for each,
+and optionally completes metadata automatically.
+
+Includes rate limiting (2s delay between clips by default, exponential backoff on 429).`,
+  inputSchema: {
+    limit: z.number().optional().describe("Max clips to process (default: all)"),
+    project_id: z.string().optional().describe("Filter by project_id in provenance"),
+    autoComplete: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Automatically save completed metadata"),
+    delayBetweenClips: z
+      .number()
+      .optional()
+      .default(2000)
+      .describe("Milliseconds to wait between clips"),
+    dryRun: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Report what would be processed without calling API"),
+  },
+  handler: async (args: {
+    limit?: number;
+    project_id?: string;
+    autoComplete?: boolean;
+    delayBetweenClips?: number;
+    dryRun?: boolean;
+  }) => {
+    // Find all pending clips
+    let candidates = listPendingClips();
+
+    // Filter by project_id if specified
+    if (args.project_id) {
+      candidates = candidates.filter((c) => c.projectId === args.project_id);
+    }
+
+    // Apply limit
+    if (args.limit) {
+      candidates = candidates.slice(0, args.limit);
+    }
+
+    if (args.dryRun) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                mode: "dry_run",
+                clips_found: candidates.length,
+                clips: candidates.map((c) => ({
+                  clip_id: c.clipId,
+                  frame_count: c.frameCount,
+                  project_id: c.projectId,
+                })),
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    const results: Array<{
+      clip_id: string;
+      status: "completed" | "error";
+      tokens_used?: { input: number; output: number };
+      error?: string;
+    }> = [];
+
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const { clipId } = candidates[i];
+
+      try {
+        const descResult = await describeClipFrames(clipId);
+
+        if (args.autoComplete) {
+          await completeClipMetadata(
+            clipId,
+            descResult.descriptions,
+            descResult.overallSummary
+          );
+        }
+
+        totalInputTokens += descResult.tokensUsed.input;
+        totalOutputTokens += descResult.tokensUsed.output;
+
+        results.push({
+          clip_id: clipId,
+          status: "completed",
+          tokens_used: descResult.tokensUsed,
+        });
+      } catch (error) {
+        results.push({
+          clip_id: clipId,
+          status: "error",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      // Rate limiting between clips
+      if (i < candidates.length - 1) {
+        await sleep(args.delayBetweenClips || 2000);
+      }
+    }
+
+    const completed = results.filter((r) => r.status === "completed").length;
+    const failed = results.filter((r) => r.status === "error").length;
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(
+            {
+              summary: {
+                total: candidates.length,
+                completed,
+                failed,
+                total_tokens: {
+                  input: totalInputTokens,
+                  output: totalOutputTokens,
+                },
+              },
+              results,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
+  },
+};
+
+// ============================================================================
 // Export all tools
 // ============================================================================
 
@@ -404,4 +636,6 @@ export const clipMetadataTools = {
   rebuild_clip_index: rebuildClipIndexTool,
   batch_extract_metadata: batchExtractMetadataTool,
   list_clip_metadata: listClipMetadataTool,
+  describe_clip_frames: describeClipFramesTool,
+  batch_describe_frames: batchDescribeFramesTool,
 };
