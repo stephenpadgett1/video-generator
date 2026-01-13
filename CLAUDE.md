@@ -20,6 +20,7 @@ npm start  # Server at http://localhost:3000
 | Clip editing & variations | `.claude/rules/editing-system.md` |
 | Agent reference & QA | `.claude/rules/agents.md` |
 | Advanced hybrid techniques | `TECHNIQUES.md` |
+| **Skills** (auto-triggered) | `.claude/skills/` |
 
 ## File Locations
 
