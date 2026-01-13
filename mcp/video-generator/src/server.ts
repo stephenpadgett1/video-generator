@@ -9,6 +9,9 @@ import { jobsTools } from "./tools/jobs.js";
 import { generationTools } from "./tools/generation.js";
 import { lockingTools } from "./tools/locking.js";
 import { executionTools } from "./tools/execution.js";
+import { audioTools } from "./tools/audio.js";
+import { analysisTools } from "./tools/analysis.js";
+import { editingTools } from "./tools/editing.js";
 
 // Create MCP server
 const server = new McpServer({
@@ -34,12 +37,20 @@ function registerTools(tools: Record<string, ToolDef>) {
 }
 
 // Register all tool categories
+// Phase 3A: Core tools
 registerTools(configTools as unknown as Record<string, ToolDef>);
 registerTools(projectsTools as unknown as Record<string, ToolDef>);
+
+// Phase 3B: Jobs, generation, locking, execution
 registerTools(jobsTools as unknown as Record<string, ToolDef>);
 registerTools(generationTools as unknown as Record<string, ToolDef>);
 registerTools(lockingTools as unknown as Record<string, ToolDef>);
 registerTools(executionTools as unknown as Record<string, ToolDef>);
+
+// Phase 3C: Audio, analysis, editing
+registerTools(audioTools as unknown as Record<string, ToolDef>);
+registerTools(analysisTools as unknown as Record<string, ToolDef>);
+registerTools(editingTools as unknown as Record<string, ToolDef>);
 
 // Start server
 async function main() {
