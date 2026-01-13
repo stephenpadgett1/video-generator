@@ -12,6 +12,8 @@ import { executionTools } from "./tools/execution.js";
 import { audioTools } from "./tools/audio.js";
 import { analysisTools } from "./tools/analysis.js";
 import { editingTools } from "./tools/editing.js";
+import { assemblyTools } from "./tools/assembly.js";
+import { validationTools } from "./tools/validation.js";
 
 // Create MCP server
 const server = new McpServer({
@@ -51,6 +53,10 @@ registerTools(executionTools as unknown as Record<string, ToolDef>);
 registerTools(audioTools as unknown as Record<string, ToolDef>);
 registerTools(analysisTools as unknown as Record<string, ToolDef>);
 registerTools(editingTools as unknown as Record<string, ToolDef>);
+
+// Phase 3D: Assembly, validation
+registerTools(assemblyTools as unknown as Record<string, ToolDef>);
+registerTools(validationTools as unknown as Record<string, ToolDef>);
 
 // Start server
 async function main() {
