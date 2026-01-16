@@ -326,3 +326,153 @@ Veo interpreted "descending downward" as "flying forward into the tunnel" rather
 2. **Emergence:** Add "something appears" to final clip prompt for payoff
 3. **Color evolution:** Prompt color changes across clips (light→dark, warm→cool)
 4. **Speed variation:** Generate clips at different "motion speeds" via prompting
+
+---
+
+## Film Strip Scroll Effect (2026-01-16)
+
+**Keywords:** film strip, sprockets, vintage, scroll, still images, photo montage, vertical scroll
+
+Creates a vintage film strip effect from still images with scrolling sprocket holes. The entire strip (images + sprockets) scrolls vertically for an authentic film reel look.
+
+### Specifications for 9:16 4K (2160x3840)
+
+| Element | Value | Notes |
+|---------|-------|-------|
+| Frame size | 2160x3840 | 4K vertical |
+| Black border width | 160px | Each side |
+| Content area | 1840x3840 | Between borders |
+| Sprocket dimensions | 90w x 60h | Wider than tall (horizontal rectangles) |
+| Sprocket X positions | Left: 35, Right: 2035 | Centered in borders |
+| Sprocket Y spacing | 960px apart | 4 visible per frame |
+| Sprocket Y start | 450 | First sprocket top-left corner |
+| Corner radius | 100px | Rounded corners on images |
+
+### Workflow Overview
+
+1. **Process each image** with rounded corners on white background
+2. **Stack vertically** into tall strip
+3. **Draw borders and sprockets** on full strip (so they scroll)
+4. **Animated crop** to create scrolling effect
+
+### Step 1: Process Images with Rounded Corners
+
+Each image gets scaled to fill the content area with only the corners rounded. White shows through the corner cutouts.
+
+```bash
+RADIUS=100
+CONTENT_W=1840
+CONTENT_H=3840
+FRAME_W=2160
+FRAME_H=3840
+
+ffmpeg -y -i "source_image.jpeg" \
+  -f lavfi -i "color=white:s=${CONTENT_W}x${CONTENT_H}" \
+  -filter_complex "
+    [0]scale=${CONTENT_W}:${CONTENT_H}:force_original_aspect_ratio=increase,crop=${CONTENT_W}:${CONTENT_H},format=rgba,
+    geq='
+      r=r(X,Y):g=g(X,Y):b=b(X,Y):
+      a=if(
+        lte(X,${RADIUS})*lte(Y,${RADIUS})*gt(hypot(${RADIUS}-X,${RADIUS}-Y),${RADIUS})+
+        gte(X,W-${RADIUS})*lte(Y,${RADIUS})*gt(hypot(X-(W-${RADIUS}),${RADIUS}-Y),${RADIUS})+
+        lte(X,${RADIUS})*gte(Y,H-${RADIUS})*gt(hypot(${RADIUS}-X,Y-(H-${RADIUS})),${RADIUS})+
+        gte(X,W-${RADIUS})*gte(Y,H-${RADIUS})*gt(hypot(X-(W-${RADIUS}),Y-(H-${RADIUS})),${RADIUS}),
+        0,255)
+    '[img];
+    [1][img]overlay=0:0,pad=${FRAME_W}:${FRAME_H}:(ow-iw)/2:0:white
+  " -frames:v 1 "frame_output.png"
+```
+
+**How the rounded corners work:**
+- `geq` (generic equation) filter sets alpha channel per-pixel
+- For each corner quadrant, calculates distance from corner center
+- If distance > radius, pixel is transparent (a=0), otherwise opaque (a=255)
+- Image is overlaid on white background, so white shows through transparent corners
+
+### Step 2: Stack Images Vertically
+
+```bash
+ffmpeg -y \
+  -i frame_00.png -i frame_01.png -i frame_02.png \
+  -i frame_03.png -i frame_04.png -i frame_05.png \
+  -i frame_06.png -i frame_07.png -i frame_08.png \
+  -filter_complex "[0][1][2][3][4][5][6][7][8]vstack=inputs=9" \
+  -update 1 stacked_strip.png
+```
+
+For 9 images at 3840px each: total strip height = 34560px
+
+### Step 3: Build Scrolling Sprocket Filter
+
+Sprockets must be drawn on the FULL strip BEFORE the animated crop so they scroll with the content.
+
+```bash
+# Black borders (full strip height)
+FILTER="drawbox=x=0:y=0:w=160:h=34560:c=black:t=fill"
+FILTER="$FILTER,drawbox=x=2000:y=0:w=160:h=34560:c=black:t=fill"
+
+# Sprockets every 960px (Y positions: 450, 1410, 2370, 3330, ...)
+for y in 450 1410 2370 3330 4290 5250 6210 7170 8130 9090 \
+         10050 11010 11970 12930 13890 14850 15810 16770 17730 18690 \
+         19650 20610 21570 22530 23490 24450 25410 26370 27330 28290 \
+         29250 30210 31170 32130 33090 34050; do
+  FILTER="$FILTER,drawbox=x=35:y=$y:w=90:h=60:c=white:t=fill"
+  FILTER="$FILTER,drawbox=x=2035:y=$y:w=90:h=60:c=white:t=fill"
+done
+```
+
+### Step 4: Render with Animated Crop
+
+```bash
+# Calculate scroll speed: (strip_height - frame_height) / duration
+# For 9 images: (34560 - 3840) / duration = 30720 / duration
+
+# 5-second version: speed = 30720 / 5 = 6144 px/sec
+ffmpeg -y -loop 1 -i stacked_strip.png \
+  -vf "${FILTER},crop=2160:3840:0:'t*6144',format=yuv420p" \
+  -t 5 -r 24 -c:v libx264 -pix_fmt yuv420p \
+  output_5sec.mp4
+
+# 3.5-second version: speed = 30720 / 3.5 = 8777 px/sec
+ffmpeg -y -loop 1 -i stacked_strip.png \
+  -vf "${FILTER},crop=2160:3840:0:'t*8777',format=yuv420p" \
+  -t 3.5 -r 24 -c:v libx264 -pix_fmt yuv420p \
+  output_3.5sec.mp4
+```
+
+**Key insight:** The `crop` filter's Y position uses `t*speed` where `t` is time in seconds. This creates smooth vertical scrolling. Drawing borders/sprockets BEFORE the crop makes them part of the scrolling content.
+
+### Speed Reference
+
+| Duration | Images | Speed (px/sec) | Feel |
+|----------|--------|----------------|------|
+| 5.0s | 9 | 6144 | Moderate, viewable |
+| 3.5s | 9 | 8777 | Fast, dynamic |
+| 4.0s | 9 | 7680 | Balanced |
+
+**Formula:** `speed = (num_images - 1) * frame_height / duration`
+
+### Customization
+
+**Adjusting corner radius:**
+- 50px = subtle rounding
+- 100px = noticeable vintage feel
+- 150px+ = very rounded, almost oval
+
+**Adjusting sprocket size:**
+- Current: 90w x 60h (horizontal rectangle)
+- For taller sprockets: swap to 60w x 90h
+- Scale proportionally for different frame sizes
+
+**Adjusting border width:**
+- 160px works well for 4K (2160 wide)
+- For 1080p (720 wide): use ~55px borders
+- Rule of thumb: ~7.5% of frame width per side
+
+### Output Examples
+
+| File | Description |
+|------|-------------|
+| `data/exports/workspace_filmstrip_4k.mp4` | 5-second version |
+| `data/exports/workspace_filmstrip_4k_fast.mp4` | 3.5-second version |
+| `data/workspace/stacked_strip_rounded.png` | Processed strip with rounded corners |
