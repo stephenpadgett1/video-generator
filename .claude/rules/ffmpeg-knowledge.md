@@ -48,3 +48,72 @@ Then use concat demuxer:
 printf "file 'a.mp4'\nfile 'b.mp4'\n" > list.txt
 ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
 ```
+
+## Frame Extension Techniques
+
+**Problem:** Need to hold the last frame of a clip for additional time.
+
+**Approaches (in order of reliability):**
+
+1. **Adjust clip timing** (most reliable)
+   - Don't extend - just start the next clip earlier
+   - Avoids filter complexity entirely
+
+2. **tpad filter** (works but order-sensitive)
+   ```bash
+   # CORRECT: trim → tpad → setpts (single setpts at end)
+   [0:v]trim=start=6.5:end=8.0,tpad=stop_duration=0.5:stop_mode=clone,setpts=PTS-STARTPTS+1.5/TB[out];
+
+   # WRONG: double setpts breaks tpad
+   [0:v]trim=...,setpts=PTS-STARTPTS,tpad=...,setpts=PTS-STARTPTS+X/TB[out];
+   ```
+
+3. **eof_action=repeat on overlay** (unreliable in chains)
+   - May not work correctly with multiple chained overlays
+   - Last resort, prefer tpad or timing adjustment
+
+## Overlay eof_action Options
+
+| Option | Behavior | Use Case |
+|--------|----------|----------|
+| `pass` | Pass through background when overlay ends | Default, most predictable |
+| `repeat` | Repeat last overlay frame | Frame hold (but unreliable in chains) |
+| `endall` | End output when shortest input ends | Trim to shortest |
+
+**Recommendation:** Always use `eof_action=pass` and ensure overlay clip has sufficient duration.
+
+## Filter Chain Ordering
+
+**General rule:** `trim` → processing filters → `setpts` (positioning)
+
+```bash
+# Input processing order:
+trim=start=X:end=Y           # 1. Cut segment from source
+,tpad=stop_duration=0.5      # 2. Extend if needed
+,setpts=PTS-STARTPTS+OFFSET/TB  # 3. Position in timeline (ONCE, at end)
+```
+
+**Why single setpts matters:** Multiple setpts calls can corrupt timestamps, especially after filters that add frames (tpad, loop).
+
+## Debugging Overlay Chains
+
+When overlays produce unexpected results:
+
+1. **Test each overlay independently** - Comment out all but one
+2. **Check clip durations** - Use `ffprobe -show_entries format=duration`
+3. **Verify timing math** - Ensure overlay enable windows match clip placements
+4. **Watch for gaps** - If clip ends before overlay window, you'll see black/background
+
+## Text Label Overlap
+
+**Problem:** Adjacent labels appear simultaneously at boundaries.
+
+```bash
+# WRONG: both true at t=3.5
+enable='between(t,0,3.5)'
+enable='between(t,3.5,6.0)'
+
+# CORRECT: exclusive end bounds
+enable='gte(t,0)*lt(t,3.5)'
+enable='gte(t,3.5)*lt(t,6.0)'
+```
