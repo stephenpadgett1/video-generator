@@ -476,3 +476,132 @@ ffmpeg -y -loop 1 -i stacked_strip.png \
 | `data/exports/workspace_filmstrip_4k.mp4` | 5-second version |
 | `data/exports/workspace_filmstrip_4k_fast.mp4` | 3.5-second version |
 | `data/workspace/stacked_strip_rounded.png` | Processed strip with rounded corners |
+
+---
+
+## Progressive Split Screen Effect (2026-01-16)
+
+**Keywords:** split screen, grid, mosaic, multi-clip, animated grid, 16-up, quad split, picture-in-picture, montage
+
+Creates an animated split screen effect where clips progressively multiply: 1→2→4→8→16, ending with a 4x4 grid. Existing clips shrink while new clips slide in from edges.
+
+### Specifications for 9:16 4K (2160x3840)
+
+| State | Grid | Clips | Each Clip Size | Layout |
+|-------|------|-------|----------------|--------|
+| 1 | 1×1 | 1 | 2160×3840 | Full frame |
+| 2 | 1×2 | 2 | 2160×1920 | Stacked vertically |
+| 3 | 2×2 | 4 | 1080×1920 | 2×2 grid |
+| 4 | 2×4 | 8 | 1080×960 | 2 cols × 4 rows |
+| 5 | 4×4 | 16 | 540×960 | 4×4 grid |
+
+### Animation Approach
+
+Each transition uses two simultaneous animations:
+1. **Existing clips shrink** via animated `scale` filter
+2. **New clips slide in** via animated `overlay` position
+
+Transitions alternate direction:
+- 1→2: Vertical split (clip 2 slides up from bottom)
+- 2→4: Horizontal split (clips 3-4 slide in from right)
+- 4→8: Vertical split (clips 5-8 slide up from bottom)
+- 8→16: Horizontal split (clips 9-16 slide in from right)
+
+### Core Technique: Expression-Based Animation
+
+FFmpeg's `scale` and `overlay` filters support expressions with `eval=frame` for per-frame evaluation. The time variable `t` enables smooth interpolation.
+
+**Linear interpolation pattern:**
+```
+if(lt(t,T_START), FROM_VALUE,
+  if(lt(t,T_END), FROM_VALUE - (FROM_VALUE - TO_VALUE) * (t - T_START) / (T_END - T_START),
+    TO_VALUE))
+```
+
+**Scale example (shrink width from 2160 to 1080 over 0.3s starting at t=1.9):**
+```bash
+scale=w='if(lt(t,1.9),2160,if(lt(t,2.2),2160-(2160-1080)*(t-1.9)/0.3,1080))':h=...:eval=frame
+```
+
+**Overlay example (slide from x=2160 to x=1080):**
+```bash
+overlay=x='if(lt(t,1.9),2160,if(lt(t,2.2),2160-(2160-1080)*(t-1.9)/0.3,1080))':y=0:eval=frame:enable='gte(t,1.9)'
+```
+
+**Key points:**
+- `eval=frame` is required for time-based expressions
+- `enable='gte(t,T)'` controls when a clip becomes visible
+- Nest `if()` statements for multi-phase animations
+
+### Default Timing (Accelerating Pace, 4s Total)
+
+| Time | Event | Duration |
+|------|-------|----------|
+| 0.0 - 1.0s | State 1 (full screen) | 1.0s hold |
+| 1.0 - 1.4s | Transition 1→2 | 0.4s |
+| 1.4 - 1.9s | State 2 (2 clips) | 0.5s hold |
+| 1.9 - 2.2s | Transition 2→4 | 0.3s |
+| 2.2 - 2.6s | State 3 (4 clips) | 0.4s hold |
+| 2.6 - 2.9s | Transition 4→8 | 0.3s |
+| 2.9 - 3.2s | State 4 (8 clips) | 0.3s hold |
+| 3.2 - 3.5s | Transition 8→16 | 0.3s |
+| 3.5 - 4.0s | State 5 (16 clips) | 0.5s hold |
+
+### Using the Script
+
+Reference implementation: `scripts/split-screen/generate_split_filter.sh`
+
+```bash
+# Run from project root with 16 input clips
+cd /path/to/video-generator
+bash scripts/split-screen/generate_split_filter.sh
+```
+
+The script expects 16 input files at `data/exports/placeholder_{1-16}.mp4`. Modify the `INPUTS` section to use your own clips.
+
+**Customizing timing:** Edit the timing constants at the top of the script:
+```bash
+T1=1.0   # End state 1, start transition 1→2
+T2=1.4   # End transition 1→2
+# ... etc
+TEND=4.0 # Total duration
+```
+
+### Mixed Input Types
+
+Videos and images can be combined. For images, use `-loop 1` before the input:
+
+```bash
+# Videos: direct input
+-i clip1.mp4 -i clip5.mp4
+
+# Images: with loop flag (MUST come before -i)
+-loop 1 -i image2.png -loop 1 -i image3.jpg
+```
+
+### Creating Test Placeholders
+
+Generate colored placeholder clips for testing:
+
+```bash
+# Create numbered colored placeholders
+ffmpeg -y -f lavfi -i "color=c=red:s=2160x3840:r=24:d=5" \
+  -vf "drawtext=text='1':fontsize=400:fontcolor=white:x=(w-tw)/2:y=(h-th)/2" \
+  -c:v libx264 -preset fast -pix_fmt yuv420p -t 5 placeholder_1.mp4
+```
+
+### Output Examples
+
+| File | Description |
+|------|-------------|
+| `data/exports/split_screen_16clips.mp4` | Full 16-clip version |
+| `data/exports/split_test_4clips.mp4` | 4-clip test version |
+| `scripts/split-screen/generate_split_filter.sh` | Reference implementation |
+
+### Customization Ideas
+
+1. **Different grid progression:** 1→4→9→16 (square numbers) instead of powers of 2
+2. **Reverse effect:** Start with 16 clips, merge down to 1
+3. **Hold on specific state:** Extend timing to showcase a particular grid
+4. **Easing functions:** Replace linear interpolation with ease-in/ease-out curves
+5. **Different slide directions:** All from center outward, spiral pattern, etc.
