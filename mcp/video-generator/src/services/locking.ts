@@ -121,63 +121,102 @@ async function generateImageWithImagen(
 export async function lockCharacter(options: {
   character: { id: string; description: string };
   style?: string;
+  userLockedDescription?: string;
+  userReferenceImagePath?: string;
 }): Promise<LockCharacterResult> {
-  const { character, style } = options;
+  const { character, style, userLockedDescription, userReferenceImagePath } = options;
 
-  // Step 1: Generate neutral full-body reference image
-  const imagenPrompt = `Full-body portrait of ${character.description}. Standing in a neutral pose, plain gray background, soft even lighting, facing camera, simple clothing.${style ? " " + style : ""}`;
+  let base64Image: string;
+  const filename = `character_${character.id}_base.png`;
+  const filepath = path.join(GENERATED_IMAGES_DIR, filename);
 
-  const base64Image = await generateImageWithImagen(imagenPrompt, "9:16");
-
-  // Step 2: Save image
+  // Ensure output directory exists
   if (!fs.existsSync(GENERATED_IMAGES_DIR)) {
     fs.mkdirSync(GENERATED_IMAGES_DIR, { recursive: true });
   }
 
-  const filename = `character_${character.id}_base.png`;
-  const filepath = path.join(GENERATED_IMAGES_DIR, filename);
-  fs.writeFileSync(filepath, Buffer.from(base64Image, "base64"));
+  // Step 1: Get reference image (user-provided or generate)
+  if (userReferenceImagePath) {
+    // Use user-provided reference image
+    const resolvedPath = path.isAbsolute(userReferenceImagePath)
+      ? userReferenceImagePath
+      : path.resolve(userReferenceImagePath);
 
-  // Step 3: Analyze with Gemini to extract immutable features
-  const characterPrompt = `Analyze this reference image of a character for video generation consistency. Extract ALL visual features that must stay identical across multiple video shots.
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`User reference image not found: ${resolvedPath}`);
+    }
 
-MUST INCLUDE:
-- Physical: age, ethnicity/skin tone, gender, hair color/style/length, body build, facial features
-- Clothing: exact garments, colors, patterns, fit (e.g., "white button-up blouse, dark navy pants")
-- Appearance state: expression, pose, demeanor if distinctive
+    const imageBuffer = fs.readFileSync(resolvedPath);
+    base64Image = imageBuffer.toString("base64");
 
-EXCLUDE: background, lighting, camera angle
+    // Copy to standard location
+    fs.copyFileSync(resolvedPath, filepath);
+  } else {
+    // Generate neutral full-body reference image
+    const imagenPrompt = `Full-body portrait of ${character.description}. Standing in a neutral pose, plain gray background, soft even lighting, facing camera, simple clothing.${style ? " " + style : ""}`;
+    base64Image = await generateImageWithImagen(imagenPrompt, "9:16");
 
-Output format: A detailed sentence, 30-50 words. Be SPECIFIC about colors and clothing.
-Example: "East Asian woman, late 20s, shoulder-length straight black hair, slim build, wearing a crisp white button-up blouse tucked into high-waisted dark navy trousers, calm neutral expression, standing upright with relaxed posture."`;
+    // Save generated image
+    fs.writeFileSync(filepath, Buffer.from(base64Image, "base64"));
+  }
 
-  let lockedDescription = await analyzeWithGemini(base64Image, characterPrompt);
-  lockedDescription = lockedDescription.trim();
+  // Step 2: Get locked description (user-provided or extract from image)
+  let lockedDescription: string;
 
-  // Validate description length
-  const wordCount = lockedDescription.split(/\s+/).length;
-  if (wordCount < 8) {
-    // Retry with more explicit prompt
-    const retryPrompt = `Describe this person's complete visual appearance for video consistency in 30-50 words.
+  if (userLockedDescription) {
+    // Use user-provided description directly
+    lockedDescription = userLockedDescription.trim();
+  } else {
+    // Extract description from image using Gemini
+    const characterPrompt = `Analyze this reference image for video generation consistency.
+
+EXTRACT ALL VISUAL FEATURES - be extremely specific:
+
+1. PHYSICAL: age, ethnicity/skin tone, gender, hair (color/style/length), build, facial features
+2. CLOTHING: exact garments with colors, patterns, fit
+3. MAKEUP/FACEPAINT (if present):
+   - Describe LEFT and RIGHT sides SEPARATELY
+   - COUNT elements: stripes, dots, marks on each side
+   - Note colors and positioning
+4. ACCESSORIES:
+   - Hats: style, any folds or angles (which side?)
+   - Glasses: frame style and color
+   - Jewelry: exact placement
+5. ASYMMETRIC DETAILS: anything different left vs right
+
+Output: 50-80 words. Include specific COUNTS and POSITIONS.
+Example: "Caucasian man, mid-50s, receding gray hair, thick black-framed glasses, tiger facepaint with 4 orange diagonal stripes on left cheek and 3 on right cheek angled toward nose, charcoal fedora with left brim folded up 2 inches, brown tweed jacket, nervous expression."`;
+
+    lockedDescription = await analyzeWithGemini(base64Image, characterPrompt);
+    lockedDescription = lockedDescription.trim();
+
+    // Validate description length
+    const wordCount = lockedDescription.split(/\s+/).length;
+    if (wordCount < 15) {
+      // Retry with more explicit prompt
+      const retryPrompt = `Describe this person's complete visual appearance for video consistency in 50-80 words.
 
 You MUST include ALL of these details:
 1. Ethnicity/skin tone and approximate age
 2. Gender presentation
 3. Hair color, style, and length
 4. Body build
-5. CLOTHING: specific garments with colors (e.g., "white blouse, dark pants")
-6. Expression/demeanor if notable
+5. CLOTHING: specific garments with exact colors
+6. Expression/demeanor
+7. MAKEUP/FACEPAINT: COUNT elements on each side (left vs right)
+8. ACCESSORIES: note positions and angles
 
-Example: "East Asian woman, early 30s, shoulder-length black hair, slim build, wearing white button-up blouse and dark navy trousers, calm composed expression."`;
+Be VERY SPECIFIC about counts and asymmetric details.`;
 
-    const retryDescription = await analyzeWithGemini(base64Image, retryPrompt);
-    if (retryDescription.split(/\s+/).length >= 8) {
-      lockedDescription = retryDescription.trim();
+      const retryDescription = await analyzeWithGemini(base64Image, retryPrompt);
+      if (retryDescription.split(/\s+/).length >= 15) {
+        lockedDescription = retryDescription.trim();
+      }
     }
-  }
 
-  if (!lockedDescription) {
-    throw new Error("Failed to extract character description");
+    if (!lockedDescription) {
+      throw new Error("Failed to extract character description");
+    }
   }
 
   return {

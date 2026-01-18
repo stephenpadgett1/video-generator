@@ -5,10 +5,20 @@ import {
   generateFramePrompts,
   breakdownShot,
   generateImage,
+  editImage,
   analyzeImage,
   ARC_TYPES,
 } from "../services/generation.js";
 import { submitVeoGeneration, pollVeoOperation } from "../clients/veo.js";
+
+// Available image models
+const IMAGE_MODELS = [
+  "imagen-3.0-generate-002", // Imagen 3 (default)
+  "imagen-3.0-capability-001", // Imagen 3 edit/inpaint
+  "imagen-4.0-generate-001", // Imagen 4
+  "gemini-2.5-flash-image", // Nano Banana Flash
+  "gemini-3-pro-image-preview", // Nano Banana Pro (4K)
+] as const;
 
 /**
  * Generation tools - structure, prompts, images, and Veo submission
@@ -367,7 +377,8 @@ export const generationTools = {
   generate_image: {
     name: "generate_image",
     title: "Generate Image",
-    description: "Generate an image using Imagen 3.0.",
+    description:
+      "Generate an image using Imagen 3.0 or Gemini models. Supports multiple model backends for different capabilities.",
     inputSchema: {
       prompt: z.string().describe("Image generation prompt"),
       aspectRatio: z
@@ -379,11 +390,18 @@ export const generationTools = {
         .string()
         .optional()
         .describe("Optional filename for output"),
+      model: z
+        .enum(IMAGE_MODELS)
+        .optional()
+        .describe(
+          "Model to use: imagen-3.0-generate-002 (default), imagen-4.0-generate-001 (Imagen 4), gemini-2.5-flash-image (Nano Banana Flash), gemini-3-pro-image-preview (Nano Banana Pro, 4K)"
+        ),
     },
     handler: async (args: {
       prompt: string;
       aspectRatio?: string;
       outputFilename?: string;
+      model?: (typeof IMAGE_MODELS)[number];
     }) => {
       try {
         const result = await generateImage(args);
@@ -402,6 +420,69 @@ export const generationTools = {
             {
               type: "text" as const,
               text: `Error generating image: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+        };
+      }
+    },
+  },
+
+  edit_image: {
+    name: "edit_image",
+    title: "Edit Image",
+    description:
+      "Edit an existing image using AI. Supports inpainting (add/remove objects), and outpainting (extend image boundaries). Uses Imagen 3.0 capability model.",
+    inputSchema: {
+      sourceImagePath: z
+        .string()
+        .describe("Path to the source image to edit"),
+      prompt: z
+        .string()
+        .describe(
+          "What to change or add. Be specific about the edit you want."
+        ),
+      maskPath: z
+        .string()
+        .optional()
+        .describe(
+          "Optional path to mask image. White areas indicate where to edit."
+        ),
+      editMode: z
+        .enum(["inpaint-insert", "inpaint-remove", "outpaint"])
+        .optional()
+        .default("inpaint-insert")
+        .describe(
+          "Edit mode: inpaint-insert (add content), inpaint-remove (remove content), outpaint (extend boundaries)"
+        ),
+      outputFilename: z
+        .string()
+        .optional()
+        .describe("Optional filename for output"),
+    },
+    handler: async (args: {
+      sourceImagePath: string;
+      prompt: string;
+      maskPath?: string;
+      editMode?: "inpaint-insert" | "inpaint-remove" | "outpaint";
+      outputFilename?: string;
+    }) => {
+      try {
+        const result = await editImage(args);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error editing image: ${error instanceof Error ? error.message : "Unknown error"}`,
             },
           ],
         };

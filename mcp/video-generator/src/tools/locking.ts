@@ -22,15 +22,27 @@ export const lockingTools = {
         .string()
         .optional()
         .describe("Optional style guidance for the reference image"),
+      userLockedDescription: z
+        .string()
+        .optional()
+        .describe("User-provided locked description (50-80 words). Bypasses automatic Gemini extraction. Use for precise control over specific details like stripe counts, fold positions, etc."),
+      userReferenceImagePath: z
+        .string()
+        .optional()
+        .describe("Path to user-provided reference image. Bypasses Imagen generation. Use when you have an existing image with the exact details you want."),
     },
     handler: async (args: {
       character: { id: string; description: string };
       style?: string;
+      userLockedDescription?: string;
+      userReferenceImagePath?: string;
     }) => {
       try {
         const result = await lockCharacter({
           character: args.character,
           style: args.style,
+          userLockedDescription: args.userLockedDescription,
+          userReferenceImagePath: args.userReferenceImagePath,
         });
 
         return {

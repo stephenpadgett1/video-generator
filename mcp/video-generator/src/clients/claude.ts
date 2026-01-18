@@ -253,3 +253,34 @@ export async function callClaudeVision(options: {
 
   return withRateLimit(makeRequest, rateLimit);
 }
+
+/**
+ * Analyze an image using Claude Vision (Opus 4.5)
+ *
+ * Uses Claude for accurate image analysis without hallucinating precision.
+ * Preferred over Gemini for tasks requiring precise counting or detail verification.
+ */
+export async function analyzeImageWithClaude(options: {
+  imagePath: string;
+  prompt?: string;
+}): Promise<string> {
+  const {
+    imagePath,
+    prompt = "Describe this image briefly (2-3 sentences). Focus on the main subject, setting, and any notable visual details.",
+  } = options;
+
+  const imageContent = loadImageAsBase64(imagePath);
+
+  const result = await callClaudeVision({
+    system: "You are a precise image analyst. Describe exactly what you see. If asked to count items, count carefully and report accurately. If you cannot determine something with certainty, say so rather than guessing.",
+    messages: [
+      {
+        role: "user",
+        content: [imageContent, { type: "text", text: prompt }],
+      },
+    ],
+    temperature: 0.2, // Lower temperature for more precise analysis
+  });
+
+  return result.text;
+}

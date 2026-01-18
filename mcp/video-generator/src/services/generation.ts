@@ -1,6 +1,9 @@
-import { callClaude, parseClaudeJson } from "../clients/claude.js";
-import { analyzeImageWithGemini } from "../clients/gemini.js";
-import { generateImage as imagenGenerate } from "../clients/imagen.js";
+import { callClaude, parseClaudeJson, analyzeImageWithClaude } from "../clients/claude.js";
+import {
+  generateImage as imagenGenerate,
+  editImage as imagenEditImage,
+  ImageModel,
+} from "../clients/imagen.js";
 
 // Arc type descriptions
 export const ARC_TYPES: Record<string, string> = {
@@ -495,19 +498,37 @@ Break this shot into takes.`;
 }
 
 /**
- * Generate image using Imagen
+ * Generate image using Imagen or Gemini models
  */
 export async function generateImage(options: {
   prompt: string;
   aspectRatio?: string;
   outputFilename?: string;
-}): Promise<{ filename: string; path: string }> {
+  model?: ImageModel;
+}): Promise<{ filename: string; path: string; model: ImageModel }> {
   return imagenGenerate(options);
 }
 
 /**
+ * Edit an existing image using AI (inpainting, removal, outpainting)
+ */
+export async function editImage(options: {
+  sourceImagePath: string;
+  prompt: string;
+  maskPath?: string;
+  editMode?: "inpaint-insert" | "inpaint-remove" | "outpaint";
+  outputFilename?: string;
+}): Promise<{ filename: string; path: string; model: ImageModel }> {
+  return imagenEditImage(options);
+}
+
+// Re-export ImageModel type for convenience
+export type { ImageModel };
+
+/**
  * Analyze image to get description (for frame context)
+ * Uses Claude Opus 4.5 for accurate analysis without hallucinating precision.
  */
 export async function analyzeImage(imagePath: string): Promise<string> {
-  return analyzeImageWithGemini({ imagePath });
+  return analyzeImageWithClaude({ imagePath });
 }

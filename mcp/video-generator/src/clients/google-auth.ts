@@ -84,11 +84,20 @@ export async function getGoogleAccessToken(): Promise<AccessTokenResult> {
 
 /**
  * Build Vertex AI endpoint URL
+ *
+ * @param location - Region or "global" for models that require global endpoint
+ *                   (e.g., gemini-3-pro-image-preview is global-only)
  */
 export function buildVertexUrl(
   projectId: string,
   model: string,
-  method: string
+  method: string,
+  location: string = "us-central1"
 ): string {
-  return `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/${model}:${method}`;
+  if (location === "global") {
+    // Global endpoint: no region prefix on hostname
+    return `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/global/publishers/google/models/${model}:${method}`;
+  }
+  // Regional endpoint
+  return `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:${method}`;
 }
