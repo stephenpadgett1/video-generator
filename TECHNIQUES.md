@@ -39,6 +39,65 @@ Hybrid methods combining FFmpeg processing with Veo AI generation.
 | Bloom | `-vf "boxblur=luma_radius=2:luma_power=3"` | Soft glow |
 | High contrast | `-vf "eq=contrast=1.5:brightness=0.1"` | Punch up visuals |
 
+### Black & White Conversion
+
+**Keywords:** black and white, grayscale, monochrome, desaturate, noir, film grain, vintage
+
+Multiple approaches for B&W conversion, from simple desaturation to heavily stylized looks.
+
+**Basic Methods:**
+
+| Style | Filter | Notes |
+|-------|--------|-------|
+| Simple B&W | `hue=s=0` | Fastest, clean desaturation |
+| Via eq | `eq=saturation=0` | Alternative, same result |
+| Monochrome | `monochrome` | Custom color filter control |
+
+**Stylized Looks:**
+
+| Style | Filter Chain | Effect |
+|-------|--------------|--------|
+| High contrast noir | `hue=s=0,eq=contrast=1.4:brightness=0.02:gamma=0.9` | Deep blacks, punchy contrast |
+| Film grain | `hue=s=0,noise=alls=15:allf=t,eq=contrast=1.1` | Vintage film texture |
+| Cool monochrome | `monochrome=cb=0.1:cr=-0.1,eq=contrast=1.2` | Slight cool/blue bias in grays |
+| Crushed blacks | `hue=s=0,curves=preset=cross_process,eq=saturation=0` | Lost shadow detail, stylized |
+| Warm monochrome | `monochrome=cb=-0.1:cr=0.1` | Slight warm/sepia bias |
+
+**Complete command examples:**
+
+```bash
+# Simple B&W (fastest)
+ffmpeg -i input.mp4 -vf "hue=s=0" -c:a copy output_bw.mp4
+
+# High contrast noir
+ffmpeg -i input.mp4 -vf "hue=s=0,eq=contrast=1.4:brightness=0.02:gamma=0.9" -c:a copy output_noir.mp4
+
+# Film grain vintage
+ffmpeg -i input.mp4 -vf "hue=s=0,noise=alls=15:allf=t,eq=contrast=1.1" -c:a copy output_grainy.mp4
+
+# Crushed blacks (note: requires -pix_fmt yuv420p for compatibility)
+ffmpeg -i input.mp4 -vf "hue=s=0,curves=preset=cross_process,eq=saturation=0" -pix_fmt yuv420p -c:a copy output_crushed.mp4
+```
+
+**Important:** The `curves` filter can change pixel format to `yuv444p` which Windows Media Player doesn't support. Always add `-pix_fmt yuv420p` when using curves to ensure compatibility.
+
+**GPU-accelerated (NVIDIA):**
+```bash
+ffmpeg -hwaccel cuda -i input.mp4 -vf "hue=s=0" -c:v h264_nvenc -c:a copy output_bw.mp4
+```
+
+**Combining with other effects:**
+```bash
+# B&W + vignette
+ffmpeg -i input.mp4 -vf "hue=s=0,vignette=PI/4" -c:a copy output.mp4
+
+# B&W + edge enhancement (gritty look)
+ffmpeg -i input.mp4 -vf "hue=s=0,unsharp=5:5:1.5,eq=contrast=1.2" -c:a copy output.mp4
+
+# B&W + slight blur (dreamy)
+ffmpeg -i input.mp4 -vf "hue=s=0,gblur=sigma=1.5,eq=brightness=0.05" -c:a copy output.mp4
+```
+
 ### Speed Control
 
 ```bash
