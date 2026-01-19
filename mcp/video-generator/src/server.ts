@@ -16,6 +16,7 @@ import { assemblyTools } from "./tools/assembly.js";
 import { validationTools } from "./tools/validation.js";
 import { clipMetadataTools } from "./tools/clip-metadata.js";
 import { faceDetectionTools } from "./tools/face-detection.js";
+import { songAnalysisTools } from "./tools/song-analysis.js";
 
 // Create MCP server
 const server = new McpServer({
@@ -65,6 +66,9 @@ registerTools(clipMetadataTools as unknown as Record<string, ToolDef>);
 
 // Face detection tools
 registerTools(faceDetectionTools as unknown as Record<string, ToolDef>);
+
+// Song analysis tools
+registerTools(songAnalysisTools as unknown as Record<string, ToolDef>);
 
 // Start server
 async function main() {

@@ -38,6 +38,9 @@ export const CHARACTER_CLUSTER_SCRIPT = path.join(SCRIPTS_DIR, "face-detection/c
 export const CHARACTERS_JSON_PATH = path.join(CLIP_METADATA_DIR, "characters.json");
 export const CHARACTER_CENTROIDS_PATH = path.join(CLIP_METADATA_DIR, "character_centroids.json");
 
+// Song analysis
+export const SONG_ANALYSIS_SCRIPT = path.join(SCRIPTS_DIR, "song-analysis/onset_detection.py");
+
 // Ensure a path is absolute (relative to project root if not)
 export function resolvePath(filepath: string): string {
   if (path.isAbsolute(filepath)) {
