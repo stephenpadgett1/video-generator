@@ -41,6 +41,9 @@ export const CHARACTER_CENTROIDS_PATH = path.join(CLIP_METADATA_DIR, "character_
 // Song analysis
 export const SONG_ANALYSIS_SCRIPT = path.join(SCRIPTS_DIR, "song-analysis/onset_detection.py");
 
+// Video2X upscaling
+export const VIDEO2X_PATH = process.env.VIDEO2X_PATH || "C:/Program Files/Video2X Qt6/video2x.exe";
+
 // Ensure a path is absolute (relative to project root if not)
 export function resolvePath(filepath: string): string {
   if (path.isAbsolute(filepath)) {
