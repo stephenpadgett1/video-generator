@@ -51,7 +51,6 @@ Args: {
 | `transcribe` | Whisper transcription only |
 | `analyze_audio_timeline` | Speech/silence detection |
 | `analyze_dialogue_clip` | Compare expected vs actual dialogue |
-| `analyze_video_gemini` | Gemini multimodal analysis |
 
 ## Interpreting Results
 

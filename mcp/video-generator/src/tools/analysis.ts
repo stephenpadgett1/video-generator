@@ -4,7 +4,6 @@ import {
   analyzeAudioTimeline,
   analyzeDialogueClip,
   analyzeClipUnified,
-  analyzeVideoWithGemini,
 } from "../services/analysis.js";
 
 /**
@@ -188,38 +187,4 @@ export const analysisTools = {
     },
   },
 
-  analyze_video_gemini: {
-    name: "analyze_video_gemini",
-    title: "Analyze Video with Gemini",
-    description: "Analyze video using Gemini's multimodal capabilities. Good for content understanding and quality assessment.",
-    inputSchema: {
-      videoPath: z.string().describe("Path to video file"),
-      prompt: z.string().describe("Analysis prompt (what to look for/analyze)"),
-    },
-    handler: async (args: { videoPath: string; prompt: string }) => {
-      try {
-        const result = await analyzeVideoWithGemini({
-          videoPath: args.videoPath,
-          prompt: args.prompt,
-        });
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: result,
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error analyzing video: ${error instanceof Error ? error.message : "Unknown error"}`,
-            },
-          ],
-        };
-      }
-    },
-  },
 };

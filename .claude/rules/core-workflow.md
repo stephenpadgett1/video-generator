@@ -29,7 +29,6 @@ The video pipeline uses MCP (Model Context Protocol) tools. All tools are availa
 | `analyze_dialogue_clip` | videoPath, expectedDialogue | { trim, validation } |
 | `analyze_clip_unified` | videoPath, context? | { scenes, audio, anomalies, recommendations } |
 | `analyze_audio_timeline` | videoPath | { speech_segments, silences } |
-| `analyze_video_gemini` | videoPath, prompt | { analysis } |
 
 ### Audio
 

@@ -143,6 +143,92 @@ ffmpeg -f concat -safe 0 -stream_loop 24 -i strobe.txt -t 10 -vf "fps=24" strobe
 - 0.1s per frame = fast strobe (5Hz)
 - 0.017s per frame (60fps) = subliminal
 
+### Static Frame Interleaving (Ghost Effect)
+
+**Keywords:** ghost, subliminal, flicker, presence/absence, interleave, flash frame, replace frame, static overlay, strobe image
+
+Replaces every Nth frame of a video with a static "empty" version of the scene, creating a rapid flicker where subjects appear and disappear. Useful for ghostly presence/absence effects, subliminal flashing, or rapid visual transitions.
+
+**Core FFmpeg pattern:**
+
+```bash
+ffmpeg -y -i video.mp4 -loop 1 -i static_image.png -filter_complex "
+[0:v]setpts=PTS-STARTPTS[video];
+[1:v]scale=WIDTH:HEIGHT:force_original_aspect_ratio=disable,setsar=1,fps=FRAMERATE[static];
+[video][static]overlay=enable='eq(mod(n,N),N-1)':shortest=1[v]
+" -map "[v]" -an output.mp4
+```
+
+**Key parameters:**
+- `mod(n,N)` — N controls frequency (3 = every 3rd frame replaced)
+- `enable='eq(mod(n,N),N-1)'` — triggers on frame numbers where `n % N == N-1`
+- `scale=WIDTH:HEIGHT:force_original_aspect_ratio=disable` — exact match to video dimensions
+- `fps=FRAMERATE` — match source framerate (usually 24)
+- `-an` — removes audio (add back with `-c:a copy` if needed)
+
+**Complete example with ping-pong loop:**
+
+```bash
+# Create ghost flicker effect with reversed loop
+ffmpeg -y -i singer_performance.mp4 -loop 1 -i empty_stage.png -filter_complex "
+[0:v]setpts=PTS-STARTPTS,reverse,setpts=PTS-STARTPTS[rev];
+[0:v]setpts=PTS-STARTPTS[fwd];
+[fwd][rev]concat=n=2:v=1:a=0,loop=-1:size=48,trim=duration=8,setpts=PTS-STARTPTS[pingpong];
+[1:v]scale=720:1280:force_original_aspect_ratio=disable,setsar=1,fps=24[static];
+[pingpong][static]overlay=enable='eq(mod(n,3),2)':shortest=1[v]
+" -map "[v]" -t 8 -an output_ghost.mp4
+```
+
+**Frequency guide:**
+
+| N Value | Effect | Description |
+|---------|--------|-------------|
+| 2 | Every other frame | 50% visibility, aggressive strobe |
+| 3 | Every 3rd frame | ~33% ghost presence, visible flicker |
+| 4 | Every 4th frame | 25% ghost, subtle shimmer |
+| 6 | Every 6th frame | ~17% ghost, near-subliminal |
+| 8+ | Every 8th+ frame | Brief flashes, subliminal at high framerates |
+
+**Preparing the static "empty" frame:**
+
+1. **Extract a frame** from the source video where the subject is absent (if available)
+2. **Generate with AI** — use ImageGen to create an "empty" version of the scene
+3. **Clone/inpaint** — use image editing to remove the subject from a frame
+4. **Match exactly** — resolution, aspect ratio, and color grading must match the video
+
+```bash
+# Extract frame from video
+ffmpeg -ss 0.0 -i video.mp4 -frames:v 1 -update 1 reference_frame.png
+
+# Check video specs for matching
+ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate video.mp4
+```
+
+**Variations:**
+
+```bash
+# Replace with solid color instead of image
+ffmpeg -y -i video.mp4 -f lavfi -i "color=black:s=720x1280:r=24" -filter_complex "
+[0:v][1:v]overlay=enable='eq(mod(n,4),3)':shortest=1
+" -an output_black_flash.mp4
+
+# Multiple interleave patterns (ghost at N=3, flash at N=7)
+ffmpeg -y -i video.mp4 -loop 1 -i ghost.png -loop 1 -i flash.png -filter_complex "
+[0:v]setpts=PTS-STARTPTS[v];
+[1:v]scale=720:1280,fps=24[g];
+[2:v]scale=720:1280,fps=24[f];
+[v][g]overlay=enable='eq(mod(n,3),2)':shortest=1[vg];
+[vg][f]overlay=enable='eq(mod(n,7),6)':shortest=1[out]
+" -map "[out]" -an output_multi.mp4
+```
+
+**Use cases:**
+- Ghostly presence/absence (singer appears and disappears on stage)
+- Moon phase rapid transitions (full moon ↔ crescent flicker)
+- Subliminal messaging (brief frame insertions)
+- Glitch/corruption aesthetic
+- "Now you see it, now you don't" reveals
+
 ### Frame Sequences
 
 **Forward sequence (pulse):**

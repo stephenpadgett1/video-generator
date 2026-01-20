@@ -4,7 +4,6 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { loadConfig } from "../utils/config.js";
 import { resolvePath, VIDEO_DIR, DATA_DIR } from "../utils/paths.js";
-import { analyzeVideoWithGemini } from "../clients/gemini.js";
 
 const execAsync = promisify(exec);
 
@@ -753,7 +752,3 @@ export async function analyzeClipUnified(
   };
 }
 
-/**
- * Analyze video with Gemini (re-export from client)
- */
-export { analyzeVideoWithGemini };
