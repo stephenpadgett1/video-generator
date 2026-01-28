@@ -6,7 +6,10 @@ Orient to the current project state:
 
 2. **Review recent session history**: Read the most recent entries in the session log or CLAUDE.md for context on what was accomplished and where we left off.
 
-3. **Scan recent plans**: Check ./docs/claude-plans/ for any recent plan files (last few days) that might still be in progress.
+3. **Scan recent plans**: Check the following locations for recent plan files (last few days) that might still be in progress:
+   - `./.claude/plans/` - Local active plans (primary location)
+   - `./docs/claude-plans/` - Archived session plans
+   - **Important**: Only read from local project directories. Do NOT read from ~/.claude/plans/ (global plans may contain content from other projects)
 
 4. **Summarize**: Provide a brief orientation:
    - Current branch and its purpose
