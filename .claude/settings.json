@@ -6,5 +6,6 @@
       "Bash(npx tsx src/agents/*)",
       "Bash(curl http://localhost:3000/*)"
     ]
-  }
+  },
+  "plansDirectory": "./.claude/plans"
 }

@@ -42,7 +42,7 @@ export interface ImageEditOptions {
   sourceImagePath: string;
   prompt: string;
   maskPath?: string;
-  editMode?: "inpaint-insert" | "inpaint-remove" | "outpaint";
+  editMode?: "inpaint-insert" | "inpaint-remove" | "outpaint" | "bgswap";
   outputFilename?: string;
 }
 
@@ -263,6 +263,7 @@ export async function generateImage(
  * - inpaint-insert: Add new content to masked area
  * - inpaint-remove: Remove content from masked area
  * - outpaint: Extend the image beyond its boundaries
+ * - bgswap: Replace background while preserving foreground
  */
 export async function editImage(
   options: ImageEditOptions
@@ -280,41 +281,54 @@ export async function editImage(
 
   // Read source image
   const sourceBase64 = readImageAsBase64(sourceImagePath);
-  const sourceMimeType = getMimeType(sourceImagePath);
 
-  // Build the request based on edit mode
+  // Build referenceImages array
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const instance: Record<string, any> = {
-    prompt,
-    image: {
-      bytesBase64Encoded: sourceBase64,
+  const referenceImages: any[] = [
+    {
+      referenceType: "REFERENCE_TYPE_RAW",
+      referenceId: 1,
+      referenceImage: {
+        bytesBase64Encoded: sourceBase64,
+      },
     },
-  };
+  ];
 
   // Add mask if provided
   if (maskPath) {
     const maskBase64 = readImageAsBase64(maskPath);
-    instance.mask = {
-      image: {
+    referenceImages.push({
+      referenceType: "REFERENCE_TYPE_MASK",
+      referenceId: 2,
+      referenceImage: {
         bytesBase64Encoded: maskBase64,
       },
-    };
+      maskImageConfig: {
+        maskMode: "MASK_MODE_USER_PROVIDED",
+        dilation: 0.01,
+      },
+    });
   }
 
-  // Set edit mode specific parameters
-  if (editMode === "inpaint-remove") {
-    instance.editConfig = { editMode: "inpaint-remove" };
-  } else if (editMode === "outpaint") {
-    instance.editConfig = { editMode: "outpaint" };
-  } else {
-    // Default: inpaint-insert
-    instance.editConfig = { editMode: "inpaint-insert" };
-  }
+  // Map friendly mode names to API values
+  const editModeMap: Record<string, string> = {
+    "inpaint-insert": "EDIT_MODE_INPAINT_INSERTION",
+    "inpaint-remove": "EDIT_MODE_INPAINT_REMOVAL",
+    "outpaint": "EDIT_MODE_OUTPAINT",
+    "bgswap": "EDIT_MODE_BGSWAP",
+  };
+  const apiEditMode = editModeMap[editMode] || "EDIT_MODE_INPAINT_INSERTION";
 
   const requestBody = {
-    instances: [instance],
+    instances: [
+      {
+        prompt,
+        referenceImages,
+      },
+    ],
     parameters: {
       sampleCount: 1,
+      editMode: apiEditMode,
     },
   };
 
