@@ -241,6 +241,117 @@ ffmpeg -y -i video.mp4 -loop 1 -i ghost.png -loop 1 -i flash.png -filter_complex
 # Concat frames 1→2→3→4→5→6→7→8→7→6→5→4→3→2→1, loop
 ```
 
+### Video Layering / Blend Effects
+
+**Keywords:** layer, blend, overlay, composite, double exposure, warm/cool, ghosting, experimental
+
+Techniques for combining two video sources (typically alternate takes or generations) into stylized composites. Particularly effective for experimental/art film aesthetics.
+
+**Base technique: Warm/Cool Tinted Overlay**
+
+Layer two similar clips with opposing color tints at reduced opacity:
+
+```bash
+ffmpeg -y -i take_A.mp4 -i take_B.mp4 -filter_complex "
+  [0:v]colorbalance=rs=0.3:gs=0.1:bs=-0.3[warm];
+  [1:v]colorbalance=rs=-0.3:gs=0.1:bs=0.3,format=rgba,colorchannelmixer=aa=0.5[cool];
+  [warm][cool]overlay=0:0:shortest=1[v]
+" -map "[v]" -map 0:a -pix_fmt yuv420p -c:v libx264 -crf 18 -c:a aac layered.mp4
+```
+
+**Tuning parameters:**
+- `colorbalance rs/bs`: ±0.2 to ±0.4 (stronger = more obvious tint)
+- `colorchannelmixer aa`: 0.3-0.6 (lower = more ghostly top layer)
+
+---
+
+**Variations (most interesting marked with ★):**
+
+| Effect | Command | Result |
+|--------|---------|--------|
+| ★ Difference | `blend=all_mode=difference` | Otherworldly outlines where clips differ; identical areas go black |
+| ★ Solarization | `curves=all='0/0 0.25/0.75 0.5/0 0.75/0.75 1/0'` | Inverted mid-tones, 60s psychedelic film processing |
+| ★ Mirror overlay | Split + hflip + transparent overlay | Subject facing ghostly mirrored self |
+| Ghost trail | `tblend=all_mode=average,tmix=frames=5` | Stuttering afterimages, motion echo |
+| Chromatic shift | `rgbashift=rh=-4:bh=4` | Red/blue channel offset, damaged lens look |
+
+---
+
+**★ Difference mode (two sources):**
+
+```bash
+ffmpeg -y -i take_A.mp4 -i take_B.mp4 -filter_complex "
+  [0:v][1:v]blend=all_mode=difference[v];
+  [0:a]acopy[a]
+" -map "[v]" -map "[a]" -pix_fmt yuv420p -c:v libx264 -crf 18 -c:a aac difference.mp4
+```
+
+Creates bright edges where the two takes differ, black where identical. Useful for revealing subtle motion differences or creating abstract outlines.
+
+---
+
+**★ Solarization (single source):**
+
+```bash
+ffmpeg -y -i input.mp4 -vf "curves=all='0/0 0.25/0.75 0.5/0 0.75/0.75 1/0'" \
+  -pix_fmt yuv420p -c:v libx264 -crf 18 -c:a aac solarized.mp4
+```
+
+Classic 60s experimental film effect. The curve inverts mid-tones while preserving shadows and highlights.
+
+---
+
+**★ Mirror overlay (Rorschach/doppelganger):**
+
+```bash
+ffmpeg -y -i input.mp4 -vf "
+  split[a][b];
+  [b]hflip,format=yuva420p,colorchannelmixer=aa=0.4[b];
+  [a]format=yuva420p[a];
+  [a][b]overlay,format=yuv420p
+" -pix_fmt yuv420p -c:v libx264 -crf 18 -c:a aac mirror.mp4
+```
+
+Subject appears with their horizontally-flipped self as a ghost. Adjust `aa=0.4` for ghost opacity.
+
+---
+
+**Ghost trail (temporal echo):**
+
+```bash
+ffmpeg -y -i input.mp4 -vf "tblend=all_mode=average,tmix=frames=5:weights='1 1 1 1 1'" \
+  -pix_fmt yuv420p -c:v libx264 -crf 18 -c:a aac ghost_trail.mp4
+```
+
+Blends consecutive frames together. Increase `frames=N` for longer trails. Very Dziga Vertov.
+
+---
+
+**Chromatic aberration:**
+
+```bash
+ffmpeg -y -i input.mp4 -vf "rgbashift=rh=-4:bh=4" \
+  -pix_fmt yuv420p -c:v libx264 -crf 18 -c:a aac chromatic.mp4
+```
+
+Shifts red and blue channels horizontally. Mimics damaged projection or cheap lens distortion. Increase values (±8, ±12) for more aggressive effect.
+
+---
+
+**Combining effects:**
+
+Effects can be chained. Example: solarization + chromatic shift + film grain:
+
+```bash
+ffmpeg -y -i input.mp4 -vf "
+  curves=all='0/0 0.25/0.75 0.5/0 0.75/0.75 1/0',
+  rgbashift=rh=-3:bh=3,
+  noise=alls=15:allf=t
+" -pix_fmt yuv420p -c:v libx264 -crf 18 -c:a aac full_treatment.mp4
+```
+
+**Important:** Always include `-pix_fmt yuv420p` when using filters like `curves`, `rgbashift`, or alpha-channel operations. Without it, output may be incompatible with Windows Media Player and some other players.
+
 ---
 
 ## Veo Reference Image Behavior
