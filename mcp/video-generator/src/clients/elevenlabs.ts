@@ -6,6 +6,7 @@ import { AUDIO_DIR, DATA_DIR } from "../utils/paths.js";
 const VOICES_CACHE_PATH = path.join(DATA_DIR, "elevenlabs-voices.json");
 const TTS_DIR = path.join(AUDIO_DIR, "tts");
 const MUSIC_DIR = path.join(AUDIO_DIR, "music");
+const SFX_DIR = path.join(AUDIO_DIR, "sfx");
 
 export interface Voice {
   voice_id: string;
@@ -51,6 +52,19 @@ export interface MusicResult {
   path: string;
   duration: number;
   has_vocals: boolean;
+}
+
+export interface SoundEffectOptions {
+  text: string;
+  duration_seconds?: number;
+  prompt_influence?: number;
+  filename?: string;
+}
+
+export interface SoundEffectResult {
+  filename: string;
+  path: string;
+  duration: number;
 }
 
 /**
@@ -277,5 +291,72 @@ export async function generateMusic(options: MusicOptions): Promise<MusicResult>
     path: `audio/music/${outputFilename}`,
     duration,
     has_vocals: hasLyrics,
+  };
+}
+
+/**
+ * Generate sound effect using ElevenLabs
+ */
+export async function generateSoundEffect(options: SoundEffectOptions): Promise<SoundEffectResult> {
+  const apiKey = getApiKey();
+
+  const { text, duration_seconds, prompt_influence = 0.3, filename } = options;
+
+  const requestBody: Record<string, unknown> = {
+    text,
+    prompt_influence,
+  };
+
+  if (duration_seconds !== undefined) {
+    requestBody.duration_seconds = duration_seconds;
+  }
+
+  const response = await fetch("https://api.elevenlabs.io/v1/sound-generation", {
+    method: "POST",
+    headers: {
+      "xi-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ElevenLabs Sound Effect error: ${response.status} ${errorText}`);
+  }
+
+  // Ensure SFX directory exists
+  if (!fs.existsSync(SFX_DIR)) {
+    fs.mkdirSync(SFX_DIR, { recursive: true });
+  }
+
+  // Generate filename
+  const timestamp = Date.now();
+  const randomId = Math.random().toString(36).substring(2, 8);
+  const outputFilename = filename || `sfx_${timestamp}_${randomId}.mp3`;
+  const outputPath = path.join(SFX_DIR, outputFilename);
+
+  // Save audio
+  const arrayBuffer = await response.arrayBuffer();
+  fs.writeFileSync(outputPath, Buffer.from(arrayBuffer));
+
+  // Get duration via ffprobe
+  let duration = duration_seconds || 0;
+  try {
+    const { exec } = await import("child_process");
+    const { promisify } = await import("util");
+    const execAsync = promisify(exec);
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`
+    );
+    duration = parseFloat(stdout.trim()) || duration;
+  } catch {
+    // Use requested duration if ffprobe fails
+  }
+
+  return {
+    filename: outputFilename,
+    path: `audio/sfx/${outputFilename}`,
+    duration,
   };
 }

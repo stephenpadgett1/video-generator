@@ -5,6 +5,7 @@ import {
   loadVoicesCache,
   generateTTS,
   generateMusic,
+  generateSoundEffect,
   computeVoiceSettings,
   computeMusicProfile,
 } from "../services/audio.js";
@@ -253,6 +254,54 @@ export const audioTools = {
           },
         ],
       };
+    },
+  },
+
+  generate_sound_effect: {
+    name: "generate_sound_effect",
+    title: "Generate Sound Effect",
+    description:
+      "Generate a sound effect using ElevenLabs. Provide a text description of the sound.",
+    inputSchema: {
+      text: z.string().describe("Description of the sound effect (e.g., 'dogs barking in the distance')"),
+      duration_seconds: z
+        .number()
+        .optional()
+        .describe("Target duration in seconds (0.5-22). If not specified, auto-determined."),
+      prompt_influence: z
+        .number()
+        .optional()
+        .default(0.3)
+        .describe("How closely to follow the prompt (0-1). Lower = more creative."),
+      filename: z.string().optional().describe("Custom output filename"),
+    },
+    handler: async (args: {
+      text: string;
+      duration_seconds?: number;
+      prompt_influence?: number;
+      filename?: string;
+    }) => {
+      try {
+        const result = await generateSoundEffect(args);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error generating sound effect: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
+          ],
+        };
+      }
     },
   },
 };

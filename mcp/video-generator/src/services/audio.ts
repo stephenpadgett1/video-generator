@@ -3,12 +3,15 @@ import {
   getVoicesCached,
   generateTTS as elevenLabsTTS,
   generateMusic as elevenLabsMusic,
+  generateSoundEffect,
   loadVoicesCache,
   type Voice,
   type TTSOptions,
   type TTSResult,
   type MusicOptions,
   type MusicResult,
+  type SoundEffectOptions,
+  type SoundEffectResult,
 } from "../clients/elevenlabs.js";
 
 // Mood-to-voice settings mappings
@@ -211,8 +214,8 @@ export function computeMusicProfile(options: {
 }
 
 // Re-export client functions
-export { fetchVoices, getVoicesCached, loadVoicesCache };
-export type { Voice, TTSResult, MusicResult };
+export { fetchVoices, getVoicesCached, loadVoicesCache, generateSoundEffect };
+export type { Voice, TTSResult, MusicResult, SoundEffectOptions, SoundEffectResult };
 
 /**
  * Generate TTS with mood-aware settings
