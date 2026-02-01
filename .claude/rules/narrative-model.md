@@ -56,6 +56,16 @@ Voice modulation and music profiles computed from shot mood/tension/energy:
 
 See `audio-rules.js` for full mappings.
 
+### Music Generation Services
+
+| Use Case | Service | Notes |
+|----------|---------|-------|
+| Short clips (<60s) | ElevenLabs `generate_music` | Quick, integrated |
+| Long-form / audiobook | **Suno** | Discuss with user first |
+| Background ambient | Either | ElevenLabs fine for loops |
+
+**Guideline:** For projects requiring extended music (>3 minutes), especially audiobook-style productions, prefer Suno or discuss options with user before generating multiple ElevenLabs tracks.
+
 ## Transitions (Assembly)
 
 Tension-aware (priority):
