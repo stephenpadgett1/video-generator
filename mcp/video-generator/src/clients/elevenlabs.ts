@@ -17,6 +17,9 @@ export interface Voice {
 export interface VoiceSettings {
   stability: number;
   similarity_boost: number;
+  style?: number;
+  speed?: number;
+  use_speaker_boost?: boolean;
 }
 
 export interface VoicesCache {

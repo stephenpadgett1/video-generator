@@ -144,6 +144,8 @@ export const audioTools = {
         .optional()
         .default("eleven_turbo_v2_5")
         .describe("TTS model ID"),
+      style: z.number().optional().describe("Style exaggeration 0-1 (higher = more expressive/dramatic)"),
+      speed: z.number().optional().describe("Speech speed multiplier (1.0 = normal, >1 = faster, <1 = slower)"),
       filename: z.string().optional().describe("Custom output filename"),
     },
     handler: async (args: {
@@ -153,6 +155,8 @@ export const audioTools = {
       tension?: number;
       energy?: number;
       model_id?: string;
+      style?: number;
+      speed?: number;
       filename?: string;
     }) => {
       try {

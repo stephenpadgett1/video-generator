@@ -227,12 +227,23 @@ export async function generateTTS(options: {
   tension?: number;
   energy?: number;
   model_id?: string;
+  style?: number;
+  speed?: number;
   filename?: string;
 }): Promise<TTSResult & { voice_profile: VoiceProfile }> {
-  const { voice_id, text, mood, tension, energy, model_id, filename } = options;
+  const { voice_id, text, mood, tension, energy, model_id, style, speed, filename } = options;
 
   // Compute voice profile
   const voiceProfile = computeVoiceSettings({ mood, tension, energy });
+
+  // eleven_v3 only accepts stability values of 0.0, 0.5, or 1.0
+  let stability = voiceProfile.stability;
+  if (model_id === "eleven_v3") {
+    const validValues = [0.0, 0.5, 1.0];
+    stability = validValues.reduce((prev, curr) =>
+      Math.abs(curr - stability) < Math.abs(prev - stability) ? curr : prev
+    );
+  }
 
   // Generate TTS
   const result = await elevenLabsTTS({
@@ -240,8 +251,10 @@ export async function generateTTS(options: {
     text,
     model_id,
     voice_settings: {
-      stability: voiceProfile.stability,
+      stability,
       similarity_boost: voiceProfile.similarity_boost,
+      ...(style !== undefined && { style }),
+      ...(speed !== undefined && { speed }),
     },
     filename,
   });
