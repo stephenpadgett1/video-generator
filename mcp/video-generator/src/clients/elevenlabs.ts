@@ -228,31 +228,42 @@ export async function generateMusic(options: MusicOptions): Promise<MusicResult>
   const hasLyrics = !!lyrics;
 
   // Build request body
-  const requestBody: Record<string, unknown> = {
-    duration_seconds,
-  };
+  const requestBody: Record<string, unknown> = {};
 
   if (hasLyrics) {
-    // Lyrics mode
-    requestBody.lyrics = lyrics;
-    if (style) {
-      if (style.positive) requestBody.positive_style_tags = style.positive;
-      if (style.negative) requestBody.negative_style_tags = style.negative;
-    }
+    // Lyrics mode — use composition_plan with a single section
+    const section: Record<string, unknown> = {
+      section_name: "main",
+      lines: lyrics.split("\n").filter((l: string) => l.trim()),
+      duration_ms: Math.round(duration_seconds * 1000),
+    };
+    if (style?.positive) section.positive_local_styles = style.positive;
+    if (style?.negative) section.negative_local_styles = style.negative;
+
+    requestBody.composition_plan = {
+      sections: [section],
+      ...(style?.positive && { positive_global_styles: style.positive }),
+      ...(style?.negative && { negative_global_styles: style.negative }),
+    };
   } else if (prompt) {
     // Prompt mode (instrumental)
     requestBody.prompt = prompt;
+    requestBody.music_length_ms = Math.round(duration_seconds * 1000);
+    requestBody.model_id = "music_v1";
   } else {
     throw new Error("Either prompt or lyrics is required");
   }
 
-  const response = await fetch("https://api.elevenlabs.io/v1/music/generate", {
+  const bodyJson = JSON.stringify(requestBody);
+  console.error(`[ElevenLabs Music] Request body: ${bodyJson}`);
+
+  const response = await fetch("https://api.elevenlabs.io/v1/music", {
     method: "POST",
     headers: {
       "xi-api-key": apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(requestBody),
+    body: bodyJson,
   });
 
   if (!response.ok) {
