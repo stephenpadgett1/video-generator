@@ -36,6 +36,22 @@ export const jobsTools = {
         .string()
         .optional()
         .describe("Path to target last frame image (bookending)"),
+      model: z
+        .enum(["veo-3.1", "veo-3.1-fast", "veo-2.0"])
+        .optional()
+        .describe("Model to use. veo-3.1-fast is 62% cheaper ($0.15/sec vs $0.40/sec), good for drafts"),
+      seed: z
+        .number()
+        .optional()
+        .describe("Seed for deterministic generation (0-4294967295). Auto-generated if not provided. Replay a seed to reproduce results."),
+      generateAudio: z
+        .boolean()
+        .optional()
+        .describe("Enable/disable native audio generation (Veo 3+ only). Disabling saves cost on drafts."),
+      resolution: z
+        .enum(["720p", "1080p", "4k"])
+        .optional()
+        .describe("Output resolution. 720p is fastest/cheapest for drafts, 4k only on 3.1 preview models."),
     },
     handler: async (args: {
       prompt: string;
@@ -43,6 +59,10 @@ export const jobsTools = {
       durationSeconds?: number;
       referenceImagePath?: string;
       lastFramePath?: string;
+      model?: "veo-3.1" | "veo-3.1-fast" | "veo-2.0";
+      seed?: number;
+      generateAudio?: boolean;
+      resolution?: "720p" | "1080p" | "4k";
     }) => {
       try {
         const job = await createVeoJob({
@@ -51,6 +71,10 @@ export const jobsTools = {
           durationSeconds: args.durationSeconds,
           referenceImagePath: args.referenceImagePath,
           lastFramePath: args.lastFramePath,
+          model: args.model,
+          seed: args.seed,
+          generateAudio: args.generateAudio,
+          resolution: args.resolution,
         });
 
         return {
@@ -61,6 +85,8 @@ export const jobsTools = {
                 {
                   jobId: job.id,
                   status: job.status,
+                  model: args.model || "veo-3.1",
+                  seed: job.input.seed,
                   message: "Job created. Poll with get_job to check status.",
                 },
                 null,

@@ -296,6 +296,22 @@ export const generationTools = {
         .string()
         .optional()
         .describe("Path to target last frame image"),
+      model: z
+        .enum(["veo-3.1", "veo-3.1-fast", "veo-2.0"])
+        .optional()
+        .describe("Model to use. veo-3.1-fast is 62% cheaper, good for drafts"),
+      seed: z
+        .number()
+        .optional()
+        .describe("Seed for deterministic generation (0-4294967295). Auto-generated if not provided."),
+      generateAudio: z
+        .boolean()
+        .optional()
+        .describe("Enable/disable native audio generation (Veo 3+ only)"),
+      resolution: z
+        .enum(["720p", "1080p", "4k"])
+        .optional()
+        .describe("Output resolution"),
     },
     handler: async (args: {
       prompt: string;
@@ -303,6 +319,10 @@ export const generationTools = {
       durationSeconds?: number;
       referenceImagePath?: string;
       lastFramePath?: string;
+      model?: "veo-3.1" | "veo-3.1-fast" | "veo-2.0";
+      seed?: number;
+      generateAudio?: boolean;
+      resolution?: "720p" | "1080p" | "4k";
     }) => {
       try {
         const result = await submitVeoGeneration({
@@ -311,6 +331,10 @@ export const generationTools = {
           durationSeconds: args.durationSeconds,
           referenceImagePath: args.referenceImagePath,
           lastFramePath: args.lastFramePath,
+          model: args.model,
+          seed: args.seed,
+          generateAudio: args.generateAudio,
+          resolution: args.resolution,
         });
 
         return {
@@ -320,6 +344,8 @@ export const generationTools = {
               text: JSON.stringify(
                 {
                   operationName: result.operationName,
+                  model: result.model,
+                  seed: result.seed,
                   message:
                     "Generation submitted. Use check_veo_status to poll for completion.",
                 },

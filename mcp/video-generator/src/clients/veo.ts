@@ -3,7 +3,15 @@ import path from "path";
 import { getGoogleAccessToken, buildVertexUrl } from "./google-auth.js";
 import { VIDEO_DIR, resolvePath } from "../utils/paths.js";
 
-const VEO_MODEL = "veo-3.1-generate-preview";
+const VEO_MODEL_DEFAULT = "veo-3.1-generate-preview";
+
+export const VEO_MODELS = {
+  "veo-3.1": "veo-3.1-generate-preview",
+  "veo-3.1-fast": "veo-3.1-fast-generate-preview",
+  "veo-2.0": "veo-2.0-generate-001",
+} as const;
+
+export type VeoModelAlias = keyof typeof VEO_MODELS;
 
 export interface VeoSubmitOptions {
   prompt: string;
@@ -11,10 +19,16 @@ export interface VeoSubmitOptions {
   durationSeconds?: number;
   referenceImagePath?: string;
   lastFramePath?: string;
+  model?: VeoModelAlias;
+  seed?: number;
+  generateAudio?: boolean;
+  resolution?: "720p" | "1080p" | "4k";
 }
 
 export interface VeoSubmitResult {
   operationName: string;
+  model: string;
+  seed?: number;
 }
 
 export interface VeoPollResult {
@@ -68,9 +82,17 @@ export async function submitVeoGeneration(
     durationSeconds = 8,
     referenceImagePath,
     lastFramePath,
+    model,
+    seed,
+    generateAudio,
+    resolution,
   } = options;
 
   const validDuration = snapDuration(durationSeconds);
+  const modelId = model ? VEO_MODELS[model] : VEO_MODEL_DEFAULT;
+
+  // Generate a random seed if none provided, so we can replay later
+  const effectiveSeed = seed ?? Math.floor(Math.random() * 4294967295);
 
   // Build instance with optional reference frames
   const instance: Record<string, unknown> = { prompt };
@@ -89,15 +111,28 @@ export async function submitVeoGeneration(
     };
   }
 
-  const requestBody = {
-    instances: [instance],
-    parameters: {
-      aspectRatio,
-      durationSeconds: validDuration,
-    },
+  const parameters: Record<string, unknown> = {
+    aspectRatio,
+    durationSeconds: validDuration,
+    seed: effectiveSeed,
   };
 
-  const url = buildVertexUrl(projectId, VEO_MODEL, "predictLongRunning");
+  // generateAudio is supported on Veo 3+ models
+  if (generateAudio !== undefined) {
+    parameters.generateAudio = generateAudio;
+  }
+
+  // Resolution: 720p, 1080p, 4k (4k only on 3.1 preview models)
+  if (resolution) {
+    parameters.resolution = resolution;
+  }
+
+  const requestBody = {
+    instances: [instance],
+    parameters,
+  };
+
+  const url = buildVertexUrl(projectId, modelId, "predictLongRunning");
 
   const response = await fetch(url, {
     method: "POST",
@@ -114,18 +149,19 @@ export async function submitVeoGeneration(
   }
 
   const data = (await response.json()) as { name: string };
-  return { operationName: data.name };
+  return { operationName: data.name, model: modelId, seed: effectiveSeed };
 }
 
 /**
  * Poll Veo operation status
  */
 export async function pollVeoOperation(
-  operationName: string
+  operationName: string,
+  modelId?: string
 ): Promise<VeoPollResult> {
   const { accessToken, projectId } = await getGoogleAccessToken();
 
-  const url = buildVertexUrl(projectId, VEO_MODEL, "fetchPredictOperation");
+  const url = buildVertexUrl(projectId, modelId || VEO_MODEL_DEFAULT, "fetchPredictOperation");
 
   const response = await fetch(url, {
     method: "POST",

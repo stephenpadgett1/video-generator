@@ -5,6 +5,7 @@ import {
   pollVeoOperation,
   downloadVeoVideo,
   VeoSubmitOptions,
+  VeoModelAlias,
 } from "../clients/veo.js";
 
 export interface Job {
@@ -17,12 +18,18 @@ export interface Job {
     durationSeconds?: number;
     referenceImagePath?: string;
     lastFramePath?: string;
+    model?: VeoModelAlias;
+    seed?: number;
+    generateAudio?: boolean;
+    resolution?: string;
   };
   result?: {
     operationName?: string;
     filename?: string;
     path?: string;
     duration?: number | null;
+    model?: string;
+    seed?: number;
   };
   error?: string;
   createdAt: string;
@@ -102,6 +109,10 @@ export async function createVeoJob(input: VeoSubmitOptions): Promise<Job> {
       durationSeconds: input.durationSeconds,
       referenceImagePath: input.referenceImagePath,
       lastFramePath: input.lastFramePath,
+      model: input.model,
+      seed: input.seed,
+      generateAudio: input.generateAudio,
+      resolution: input.resolution,
     },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -132,15 +143,15 @@ async function processVeoJob(jobId: string, input: VeoSubmitOptions): Promise<vo
 
   try {
     // Submit to Veo
-    const { operationName } = await submitVeoGeneration(input);
+    const { operationName, model, seed } = await submitVeoGeneration(input);
 
-    // Store operation name
+    // Store operation name, model, and seed
     updateJob(jobId, {
-      result: { operationName },
+      result: { operationName, model, seed },
     });
 
     // Start polling (don't await - runs in background)
-    pollVeoJob(jobId, operationName).catch((error) => {
+    pollVeoJob(jobId, operationName, model).catch((error) => {
       updateJob(jobId, {
         status: "error",
         error: error.message,
@@ -157,9 +168,9 @@ async function processVeoJob(jobId: string, input: VeoSubmitOptions): Promise<vo
 /**
  * Poll a Veo operation until complete
  */
-async function pollVeoJob(jobId: string, operationName: string): Promise<void> {
+async function pollVeoJob(jobId: string, operationName: string, modelId?: string): Promise<void> {
   while (true) {
-    const result = await pollVeoOperation(operationName);
+    const result = await pollVeoOperation(operationName, modelId);
 
     if (result.error) {
       updateJob(jobId, {
@@ -174,6 +185,8 @@ async function pollVeoJob(jobId: string, operationName: string): Promise<void> {
         // Download video and save to disk
         const download = await downloadVeoVideo(result);
 
+        // Preserve model and seed from the initial submission
+        const existingJob = getJob(jobId);
         updateJob(jobId, {
           status: "complete",
           result: {
@@ -181,6 +194,8 @@ async function pollVeoJob(jobId: string, operationName: string): Promise<void> {
             filename: download.filename,
             path: download.path,
             duration: download.duration,
+            model: existingJob?.result?.model,
+            seed: existingJob?.result?.seed,
           },
         });
         return;
