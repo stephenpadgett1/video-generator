@@ -297,7 +297,7 @@ export const generationTools = {
         .optional()
         .describe("Path to target last frame image"),
       model: z
-        .enum(["veo-3.1", "veo-3.1-fast", "veo-2.0"])
+        .enum(["veo-3.1", "veo-3.1-prod", "veo-3.1-fast", "veo-3.1-fast-prod", "veo-2.0"])
         .optional()
         .describe("Model to use. veo-3.1-fast is 62% cheaper, good for drafts"),
       seed: z
@@ -319,7 +319,7 @@ export const generationTools = {
       durationSeconds?: number;
       referenceImagePath?: string;
       lastFramePath?: string;
-      model?: "veo-3.1" | "veo-3.1-fast" | "veo-2.0";
+      model?: "veo-3.1" | "veo-3.1-prod" | "veo-3.1-fast" | "veo-3.1-fast-prod" | "veo-2.0";
       seed?: number;
       generateAudio?: boolean;
       resolution?: "720p" | "1080p" | "4k";

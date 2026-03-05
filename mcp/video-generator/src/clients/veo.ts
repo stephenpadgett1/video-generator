@@ -7,7 +7,9 @@ const VEO_MODEL_DEFAULT = "veo-3.1-generate-preview";
 
 export const VEO_MODELS = {
   "veo-3.1": "veo-3.1-generate-preview",
+  "veo-3.1-prod": "veo-3.1-generate-001",
   "veo-3.1-fast": "veo-3.1-fast-generate-preview",
+  "veo-3.1-fast-prod": "veo-3.1-fast-generate-001",
   "veo-2.0": "veo-2.0-generate-001",
 } as const;
 

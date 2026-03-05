@@ -197,9 +197,43 @@ function getVideoPathForJob(project: Project, jobId: string): string | null {
 /**
  * Normalize video to target specs
  */
-async function normalizeVideo(inputPath: string, outputPath: string): Promise<void> {
-  const cmd = `ffmpeg -y -i "${inputPath}" -c:v libx264 -preset fast -crf 23 -r 24 -pix_fmt yuv420p -c:a aac -ar 48000 -ac 2 "${outputPath}"`;
+async function normalizeVideo(inputPath: string, outputPath: string, trimStart?: number, trimEnd?: number): Promise<void> {
+  // Check if input has an audio stream
+  const hasAudio = await hasAudioStream(inputPath);
+
+  // Build trim flags
+  const trimFlags: string[] = [];
+  if (trimStart && trimStart > 0) {
+    trimFlags.push(`-ss ${trimStart}`);
+  }
+  if (trimEnd && trimEnd > 0) {
+    const duration = trimEnd - (trimStart || 0);
+    trimFlags.push(`-t ${duration}`);
+  }
+  const trimStr = trimFlags.length > 0 ? ` ${trimFlags.join(" ")}` : "";
+
+  let cmd: string;
+  if (hasAudio) {
+    cmd = `ffmpeg -y -i "${inputPath}"${trimStr} -c:v libx264 -preset fast -crf 23 -r 24 -pix_fmt yuv420p -c:a aac -ar 48000 -ac 2 "${outputPath}"`;
+  } else {
+    // Add silent audio track for video-only clips
+    cmd = `ffmpeg -y -i "${inputPath}" -f lavfi -i "anullsrc=r=48000:cl=stereo"${trimStr} -c:v libx264 -preset fast -crf 23 -r 24 -pix_fmt yuv420p -c:a aac -shortest "${outputPath}"`;
+  }
   await execAsync(cmd);
+}
+
+/**
+ * Check if a video file has an audio stream
+ */
+async function hasAudioStream(inputPath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "${inputPath}"`
+    );
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -299,7 +333,7 @@ async function mixAudioLayers(
   });
 
   // Mix all
-  filterParts.push(`${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=first[out]`);
+  filterParts.push(`${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=first:normalize=0[out]`);
 
   const filterComplex = filterParts.join(";");
   const cmd = `ffmpeg -y ${inputs.join(" ")} -filter_complex "${filterComplex}" -map 0:v -map "[out]" -c:v copy -c:a aac "${outputPath}"`;
@@ -373,7 +407,7 @@ export async function assembleVideo(options: AssemblyOptions): Promise<AssemblyR
       }
 
       const normalizedPath = path.join(tempDir, `norm_${i}.mp4`);
-      await normalizeVideo(videoPath, normalizedPath);
+      await normalizeVideo(videoPath, normalizedPath, shot.trimStart, shot.trimEnd);
       normalizedClips.push(normalizedPath);
     }
 
@@ -433,8 +467,16 @@ export async function assembleVideo(options: AssemblyOptions): Promise<AssemblyR
     // Add final clip
     assembledClips.push(currentClip);
 
-    // Phase 3: Get assembled video
-    let finalVideo = assembledClips[assembledClips.length - 1];
+    // Phase 3: Concatenate assembled segments (multiple when skipTransition splits the chain)
+    let finalVideo: string;
+    if (assembledClips.length === 1) {
+      finalVideo = assembledClips[0];
+    } else {
+      const concatAllPath = path.join(tempDir, "concat_all.txt");
+      fs.writeFileSync(concatAllPath, assembledClips.map(c => `file '${c}'`).join("\n"));
+      finalVideo = path.join(tempDir, "assembled_all.mp4");
+      await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatAllPath}" -c copy "${finalVideo}"`);
+    }
 
     // Phase 4: Apply text overlays
     if (textOverlays && textOverlays.length > 0) {
