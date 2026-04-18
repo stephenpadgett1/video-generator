@@ -104,6 +104,19 @@ When overlays produce unexpected results:
 3. **Verify timing math** - Ensure overlay enable windows match clip placements
 4. **Watch for gaps** - If clip ends before overlay window, you'll see black/background
 
+## Animated Text Effects — Use ASS, Not drawbox
+
+**Problem:** `drawbox` evaluates x/y/w/h expressions **once at init**, not per-frame. Time-varying drawbox masks don't work.
+
+**Solution:** Use ASS subtitles with `\clip` + `\t` for animated text masking. See `tools/text-reveal.cjs` and TECHNIQUES.md "Text Reveal" section.
+
+```bash
+# Overlay ASS on video
+ffmpeg -y -i input.mp4 -vf "ass=overlay.ass" -c:v libx264 -crf 18 output.mp4
+```
+
+**Note:** `drawtext` expressions (x, y, alpha, enable) DO evaluate per-frame. But drawtext can't do partial vertical reveals — use ASS `\clip` for that.
+
 ## Text Label Overlap
 
 **Problem:** Adjacent labels appear simultaneously at boundaries.

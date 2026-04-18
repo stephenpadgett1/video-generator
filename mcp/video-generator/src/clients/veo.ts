@@ -3,7 +3,7 @@ import path from "path";
 import { getGoogleAccessToken, buildVertexUrl } from "./google-auth.js";
 import { VIDEO_DIR, resolvePath } from "../utils/paths.js";
 
-const VEO_MODEL_DEFAULT = "veo-3.1-generate-preview";
+const VEO_MODEL_DEFAULT = "veo-3.1-generate-001";
 
 export const VEO_MODELS = {
   "veo-3.1": "veo-3.1-generate-preview",
@@ -162,6 +162,12 @@ export async function pollVeoOperation(
   modelId?: string
 ): Promise<VeoPollResult> {
   const { accessToken, projectId } = await getGoogleAccessToken();
+
+  // Extract model from operation name if not provided (e.g. .../models/veo-3.1-generate-001/operations/...)
+  if (!modelId) {
+    const match = operationName.match(/models\/([^/]+)\/operations/);
+    if (match) modelId = match[1];
+  }
 
   const url = buildVertexUrl(projectId, modelId || VEO_MODEL_DEFAULT, "fetchPredictOperation");
 

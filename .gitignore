@@ -30,5 +30,9 @@ test-*.ts
 # Scratch files
 shared_scratchpad.txt
 
+# Large archives and temp debug files
+data.zip
+debug_temp/
+
 # Windows artifacts
 nul

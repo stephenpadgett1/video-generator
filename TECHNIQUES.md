@@ -2,6 +2,31 @@
 
 Hybrid methods combining FFmpeg processing with Veo AI generation.
 
+## Text Reveal (Vertical Wipe)
+
+**Discovery:** ASS subtitle `\clip` with `\t` transitions gives per-line vertical reveal animations. FFmpeg's `drawbox` can't do this (evaluates y/h once, not per-frame). ASS `\clip` animates per-frame.
+
+**Tool:** `node tools/text-reveal.cjs config.json --render --output out.mp4`
+
+**Technique:** Each line gets an animated clip region via `\clip(x1,y1,x2,y2)` + `\t(0,duration,\clip(...))`. The clip starts at zero height and expands top-to-bottom, revealing text with a wipe effect.
+
+**ASS line example:**
+```
+{\pos(540,730)\an5\clip(0,690,1080,690)\t(0,400,\clip(0,690,1080,770))}S = \{ 1, 2, 4 \}
+```
+
+**Key details:**
+- Curly braces must be escaped as `\{` and `\}` in ASS (the tool handles this automatically)
+- Can overlay on any background (not just black) — uses subtitle compositing
+- Reveal speed is per-line configurable via `revealMs`
+- Alignment affects clip region calculation (center=5, top=8, bottom=2)
+
+**Use cases:** Math equations appearing step-by-step, educational text builds, title sequences, lyric reveals
+
+**Skill:** `/text-reveal` — generates config, ASS file, and renders
+
+---
+
 ## Edge Detection as Compositional Constraint
 
 **Discovery:** Feeding an edge-detected frame to Veo as a reference image preserves shape/silhouette while allowing content transformation.
