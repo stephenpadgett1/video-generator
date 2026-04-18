@@ -26,15 +26,33 @@ The helper script `tools/splice.cjs` finds good `(cut_a, cut_b, xfade)` triples 
 
 **Not for:** deliberate match cuts, hard narrative cuts, or transitions where the clips are meant to look different. Use the assembly pipeline's tension-aware transitions for those.
 
-## Prerequisite: normalize bars first
+## Prerequisites: normalize + scan first
 
-Veo clips often have a few pixels of black bars (pillarbox/letterbox) on the edges. If A and B have different bar widths — especially if one has bars and the other doesn't — the splice will expose the bar difference as a visible "zoom" jump that's NOT a true scale mismatch. Run the **`normalize-clip`** skill on affected clips before splicing:
+Before splicing, run two preparatory checks on each input:
+
+### 1. `normalize-clip` — strip letterbox/pillarbox bars
+
+Veo clips often have a few pixels of black bars (pillarbox/letterbox) on the edges. If A and B have different bar widths — especially if one has bars and the other doesn't — the splice will expose the bar difference as a visible "zoom" jump that's NOT a true scale mismatch.
 
 ```bash
 node tools/normalize-clip.cjs data/workspace/shot5.mp4 data/workspace/shot5_norm.mp4
 ```
 
-After normalization, alignment detection is meaningful and splices are clean.
+### 2. `clip-qa` — scan for anomalies
+
+Veo drafts and even Quality renders sometimes contain object-materialization glitches, ghost limbs, or flicker that you won't catch until a human watches the final splice. Scan each input before splicing and trim out flagged ranges:
+
+```bash
+# Use the generation prompt as context to reduce false positives
+python3 tools/clip-qa.py data/workspace/shot5_norm.mp4 --context-file=/tmp/shot5_prompt.txt
+
+# Or fail loudly if anything high-severity is present (for automation)
+python3 tools/clip-qa.py data/workspace/shot5_norm.mp4 --context-file=/tmp/shot5_prompt.txt --fail-on=high
+```
+
+If `clip-qa` flags a prefix or suffix, use ffmpeg to trim to the reported `clean_ranges` before feeding the clip into splice. The splice tool's `--cut-b` parameter can also skip a dirty prefix on B: `splice render A.mp4 B.mp4 out.mp4 --cut-b=2.75`.
+
+After both checks, alignment detection is meaningful and the splice is clean.
 
 ## Quick start
 
