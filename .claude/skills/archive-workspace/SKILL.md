@@ -7,24 +7,30 @@ context: fork
 
 # Archive Workspace
 
-Move all files from `data/workspace/` into `data/workspace-archive/<name>/`, choosing an appropriate archive name based on the workspace contents.
+Archive one project folder from `data/workspace/<slug>/` to `data/workspace-archive/<slug>/`, preserving its internal sub-layout (`refs/`, `frames/`, `clips/`, `final/`, `scratch/`). The per-project workspace convention lives in memory: `feedback_workspace_convention.md`.
 
 ## Steps
 
-1. **Inspect workspace** - List files in `data/workspace/` to understand what was being worked on.
+1. **Inspect workspace** - List `data/workspace/` to see which project folders exist and, if needed, peek inside to confirm which one to archive.
 
-2. **Determine archive name** - Choose a short, descriptive kebab-case folder name based on the content (e.g., `alphaville-moon`, `patterns-wiener`, `fox-seed-test`). Use the project/video theme, not dates or generic names.
+2. **Pick the archive name** - Default to the project folder's own name (e.g., `hellzapoppin4-loading-dock`). Only override if the user wants a different name.
 
-3. **Check for conflicts** - Verify the archive name doesn't already exist in `data/workspace-archive/`.
+3. **Check for conflicts** - Verify `data/workspace-archive/<name>/` doesn't already exist. If it does, append a number (e.g., `hellzapoppin4-loading-dock-2`).
 
-4. **Move files** - Create the archive folder and move all files (excluding `.DS_Store` and `.claude/`):
+4. **Move the project folder intact**:
+   ```bash
+   mkdir -p data/workspace-archive
+   mv data/workspace/<slug> data/workspace-archive/<name>
+   ```
+   Preserves the full sub-layout in one move — no per-file walk needed.
+
+5. **Legacy flat workspace** - If the workspace is still flat (files directly under `data/workspace/`, no project sub-folder), fall back to the original pattern:
    ```bash
    mkdir -p data/workspace-archive/<name>
-   # Move all files except .DS_Store and .claude
    find data/workspace/ -maxdepth 1 -not -name '.DS_Store' -not -name '.claude' -not -name 'workspace' -exec mv {} data/workspace-archive/<name>/ \;
    ```
 
-5. **Confirm** - List the archive folder contents and confirm the workspace is clean.
+6. **Confirm** - List the archive folder contents and confirm `data/workspace/` no longer contains the project.
 
 ## Rules
 

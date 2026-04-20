@@ -1,7 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { getGoogleAccessToken, buildVertexUrl } from "./google-auth.js";
+import {
+  uploadFileToGcs,
+  buildObjectName,
+  inferImageMimeType,
+} from "./gcs.js";
 import { VIDEO_DIR, resolvePath } from "../utils/paths.js";
+import { loadConfig } from "../utils/config.js";
 
 const VEO_MODEL_DEFAULT = "veo-3.1-generate-001";
 
@@ -19,7 +25,7 @@ export interface VeoSubmitOptions {
   prompt: string;
   aspectRatio?: string;
   durationSeconds?: number;
-  referenceImagePath?: string;
+  firstFramePath?: string;
   lastFramePath?: string;
   model?: VeoModelAlias;
   seed?: number;
@@ -59,7 +65,7 @@ function snapDuration(seconds: number): number {
 }
 
 /**
- * Load image as base64
+ * Load image as base64 (fallback path when GCS bucket is not configured)
  */
 function loadImageBase64(imagePath: string): string {
   const resolved = resolvePath(imagePath);
@@ -67,6 +73,23 @@ function loadImageBase64(imagePath: string): string {
     throw new Error(`Image not found: ${resolved}`);
   }
   return fs.readFileSync(resolved).toString("base64");
+}
+
+async function buildImageField(
+  imagePath: string,
+  bucket: string | undefined,
+  gcsPrefix: string
+): Promise<Record<string, string>> {
+  const mimeType = inferImageMimeType(imagePath);
+  if (bucket) {
+    const objectName = buildObjectName(gcsPrefix, imagePath);
+    const gcsUri = await uploadFileToGcs(imagePath, bucket, objectName, mimeType);
+    return { gcsUri, mimeType };
+  }
+  return {
+    bytesBase64Encoded: loadImageBase64(imagePath),
+    mimeType,
+  };
 }
 
 /**
@@ -77,12 +100,13 @@ export async function submitVeoGeneration(
   options: VeoSubmitOptions
 ): Promise<VeoSubmitResult> {
   const { accessToken, projectId } = await getGoogleAccessToken();
+  const bucket = loadConfig().veoGcsBucket;
 
   const {
     prompt,
     aspectRatio = "9:16",
     durationSeconds = 8,
-    referenceImagePath,
+    firstFramePath,
     lastFramePath,
     model,
     seed,
@@ -99,18 +123,20 @@ export async function submitVeoGeneration(
   // Build instance with optional reference frames
   const instance: Record<string, unknown> = { prompt };
 
-  if (referenceImagePath) {
-    instance.image = {
-      bytesBase64Encoded: loadImageBase64(referenceImagePath),
-      mimeType: "image/png",
-    };
+  if (firstFramePath) {
+    instance.image = await buildImageField(
+      firstFramePath,
+      bucket,
+      "veo-inputs/image"
+    );
   }
 
   if (lastFramePath) {
-    instance.lastFrame = {
-      bytesBase64Encoded: loadImageBase64(lastFramePath),
-      mimeType: "image/png",
-    };
+    instance.lastFrame = await buildImageField(
+      lastFramePath,
+      bucket,
+      "veo-inputs/last-frame"
+    );
   }
 
   const parameters: Record<string, unknown> = {
@@ -127,6 +153,14 @@ export async function submitVeoGeneration(
   // Resolution: 720p, 1080p, 4k (4k only on 3.1 preview models)
   if (resolution) {
     parameters.resolution = resolution;
+  }
+
+  // storageUri tells Veo to write the output MP4 to GCS and return a URI,
+  // instead of returning a multi-MB base64-encoded video inline.
+  if (bucket) {
+    const stamp = Date.now().toString(36);
+    const rand = Math.random().toString(36).slice(2, 8);
+    parameters.storageUri = `gs://${bucket}/veo-outputs/${stamp}-${rand}/`;
   }
 
   const requestBody = {

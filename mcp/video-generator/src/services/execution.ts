@@ -151,7 +151,7 @@ export async function executeProject(options: {
 
     // Build character context
     let characterContext: string | undefined;
-    let referenceImagePath: string | undefined;
+    let firstFramePath: string | undefined;
 
     if (shot.characters && shot.characters.length > 0) {
       const lockedDescriptions: string[] = [];
@@ -160,8 +160,8 @@ export async function executeProject(options: {
         if (char?.locked_description) {
           lockedDescriptions.push(`${charId}: ${char.locked_description}`);
         }
-        if (!referenceImagePath && char?.base_image_path) {
-          referenceImagePath = char.base_image_path;
+        if (!firstFramePath && char?.base_image_path) {
+          firstFramePath = char.base_image_path;
         }
       }
       if (lockedDescriptions.length > 0) {
@@ -190,7 +190,7 @@ export async function executeProject(options: {
     const additionalContext = contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
 
     // Determine reference image (character takes priority over environment)
-    const finalReferenceImage = referenceImagePath || environmentImagePath;
+    const finalReferenceImage = firstFramePath || environmentImagePath;
 
     // Check if shot needs multi-take handling (dialogue duration > 7s)
     const dialogueDuration = shot.dialogue ? calculateDialogueDuration(shot.dialogue) : 0;
@@ -240,7 +240,7 @@ export async function executeProject(options: {
           prompt: veoPrompt,
           aspectRatio,
           durationSeconds: Math.min(8, Math.max(4, takeDuration)),
-          referenceImagePath: takeReferenceImage,
+          firstFramePath: takeReferenceImage,
         });
 
         takeJobIds.push(job.id);
@@ -286,7 +286,7 @@ export async function executeProject(options: {
         prompt: veoPrompt,
         aspectRatio,
         durationSeconds: shot.duration_target,
-        referenceImagePath: finalReferenceImage,
+        firstFramePath: finalReferenceImage,
       });
 
       shot.job_id = job.id;

@@ -16,7 +16,7 @@ export interface Job {
     prompt: string;
     aspectRatio?: string;
     durationSeconds?: number;
-    referenceImagePath?: string;
+    firstFramePath?: string;
     lastFramePath?: string;
     model?: VeoModelAlias;
     seed?: number;
@@ -107,7 +107,7 @@ export async function createVeoJob(input: VeoSubmitOptions): Promise<Job> {
       prompt: input.prompt,
       aspectRatio: input.aspectRatio,
       durationSeconds: input.durationSeconds,
-      referenceImagePath: input.referenceImagePath,
+      firstFramePath: input.firstFramePath,
       lastFramePath: input.lastFramePath,
       model: input.model,
       seed: input.seed,

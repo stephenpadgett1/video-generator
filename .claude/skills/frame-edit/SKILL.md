@@ -19,7 +19,7 @@ The lynchpin of this workflow is editing the handoff frame. That's what this ski
         │
         ▼ edit_image: remove / add / modify objects
         │
-        ▼ submit_veo_generation with the edited frame as referenceImagePath
+        ▼ submit_veo_generation with the edited frame as firstFramePath
         │
 [Clip B: post-change state]
         │
@@ -95,7 +95,7 @@ If not, adjust the prompt and re-edit. Keep previous versions for comparison.
 Tool: submit_veo_generation
 Args: {
   "prompt": "The janitor turns back, sees the empty wall, does a subtle double-take, brows knit in confusion, shrugs. Static camera. [production style notes]",
-  "referenceImagePath": "<path to edited frame>",
+  "firstFramePath": "<path to edited frame>",
   "aspectRatio": "9:16",
   "durationSeconds": 8
 }

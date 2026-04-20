@@ -288,14 +288,14 @@ export const generationTools = {
         .optional()
         .default(8)
         .describe("Duration (snaps to 4, 6, or 8)"),
-      referenceImagePath: z
+      firstFramePath: z
         .string()
         .optional()
-        .describe("Path to reference image for first frame"),
+        .describe("Path to first-frame anchor image (maps to Vertex instance.image)"),
       lastFramePath: z
         .string()
         .optional()
-        .describe("Path to target last frame image"),
+        .describe("Path to last-frame anchor image (book-ending; maps to Vertex instance.lastFrame)"),
       model: z
         .enum(["veo-3.1", "veo-3.1-prod", "veo-3.1-fast", "veo-3.1-fast-prod", "veo-2.0"])
         .optional()
@@ -317,7 +317,7 @@ export const generationTools = {
       prompt: string;
       aspectRatio?: "16:9" | "9:16" | "1:1";
       durationSeconds?: number;
-      referenceImagePath?: string;
+      firstFramePath?: string;
       lastFramePath?: string;
       model?: "veo-3.1" | "veo-3.1-prod" | "veo-3.1-fast" | "veo-3.1-fast-prod" | "veo-2.0";
       seed?: number;
@@ -329,7 +329,7 @@ export const generationTools = {
           prompt: args.prompt,
           aspectRatio: args.aspectRatio,
           durationSeconds: args.durationSeconds,
-          referenceImagePath: args.referenceImagePath,
+          firstFramePath: args.firstFramePath,
           lastFramePath: args.lastFramePath,
           model: args.model,
           seed: args.seed,

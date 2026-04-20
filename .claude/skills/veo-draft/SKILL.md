@@ -31,7 +31,7 @@ Cost per clip at each duration:
 | 6s | $0.90 | $2.40 |
 | 8s | $1.20 | $3.20 |
 
-**On entrance artifacts:** Veo tends to add ~0.5–1s of unwanted "entrance" motion at the start of a clip (character stepping into frame, door opening). At 4s this eats ~20% of the clip. Pass a reference image as `referenceImagePath` to pin the first frame — that largely prevents the entrance invention.
+**On entrance artifacts:** Veo tends to add ~0.5–1s of unwanted "entrance" motion at the start of a clip (character stepping into frame, door opening). At 4s this eats ~20% of the clip. Pass a reference image as `firstFramePath` to pin the first frame — that largely prevents the entrance invention.
 
 ## The workflow
 
@@ -52,7 +52,7 @@ Write the prompt. Keep it tight — shorter clips benefit from tighter prompts.
 ```json
 {
   "prompt": "<prompt>",
-  "referenceImagePath": "<plate or handoff frame>",
+  "firstFramePath": "<plate or handoff frame>",
   "model": "veo-3.1-fast",
   "resolution": "720p",
   "generateAudio": false,
@@ -98,7 +98,7 @@ Once a draft lands (blocking approved, clip-qa clean), regenerate on the Quality
 ```json
 {
   "prompt": "<same prompt>",
-  "referenceImagePath": "<same reference>",
+  "firstFramePath": "<same reference>",
   "model": "veo-3.1",
   "resolution": "1080p",
   "generateAudio": true,
@@ -136,7 +136,7 @@ When shot B follows shot A:
 1. Finish shot A entirely (draft → iterate → Quality → approved).
 2. Extract the handoff frame from **the final Quality version of A** (not from a draft).
 3. Optionally edit the handoff frame via `frame-edit` if the shot calls for a state change.
-4. Pass the (edited) handoff frame as shot B's `referenceImagePath`.
+4. Pass the (edited) handoff frame as shot B's `firstFramePath`.
 5. Repeat the draft-first workflow for shot B.
 
 This is strictly sequential — don't draft shot B from shot A's draft and then swap in the Quality later. The handoff frame changes subtly between draft and Quality, and shot B's continuity anchors to whichever frame you used.

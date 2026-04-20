@@ -12,7 +12,7 @@ The MCP server's `generate_image` tool is text-only for Gemini models. This skil
 
 ## When to use
 
-- **Establishing a new environment** — generate a master "set plate" from a frame of an existing shot. Downstream Veo generations use the plate as `referenceImagePath` to stay in the same world.
+- **Establishing a new environment** — generate a master "set plate" from a frame of an existing shot. Downstream Veo generations use the plate as `firstFramePath` to stay in the same world.
 - **Character consistency** — pass a reference headshot / full-body shot and prompt the character in a new pose or setting.
 - **Style anchoring** — pass 1–2 reference stills from the target look and have Nano Banana match the rendering (palette, film grain, lighting quality).
 - **Environment variation** — keep a location consistent but change staging, lighting mood, or time of day.

@@ -28,14 +28,14 @@ export const jobsTools = {
         .optional()
         .default(8)
         .describe("Target duration (will snap to 4, 6, or 8 seconds)"),
-      referenceImagePath: z
+      firstFramePath: z
         .string()
         .optional()
-        .describe("Path to reference image for first frame (image-to-video)"),
+        .describe("Path to first-frame anchor image (image-to-video; maps to Vertex instance.image)"),
       lastFramePath: z
         .string()
         .optional()
-        .describe("Path to target last frame image (bookending)"),
+        .describe("Path to last-frame anchor image (book-ending; maps to Vertex instance.lastFrame)"),
       model: z
         .enum(["veo-3.1", "veo-3.1-prod", "veo-3.1-fast", "veo-3.1-fast-prod", "veo-2.0"])
         .optional()
@@ -57,7 +57,7 @@ export const jobsTools = {
       prompt: string;
       aspectRatio?: "16:9" | "9:16" | "1:1";
       durationSeconds?: number;
-      referenceImagePath?: string;
+      firstFramePath?: string;
       lastFramePath?: string;
       model?: "veo-3.1" | "veo-3.1-prod" | "veo-3.1-fast" | "veo-3.1-fast-prod" | "veo-2.0";
       seed?: number;
@@ -69,7 +69,7 @@ export const jobsTools = {
           prompt: args.prompt,
           aspectRatio: args.aspectRatio,
           durationSeconds: args.durationSeconds,
-          referenceImagePath: args.referenceImagePath,
+          firstFramePath: args.firstFramePath,
           lastFramePath: args.lastFramePath,
           model: args.model,
           seed: args.seed,

@@ -8,6 +8,8 @@ export interface Config {
   openaiKey?: string;
   currentProject?: string;
   defaultVoiceId?: string;
+  veoServiceAccountPath?: string;
+  veoGcsBucket?: string;
   [key: string]: unknown;
 }
 
