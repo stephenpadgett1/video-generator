@@ -95,10 +95,16 @@ function range(start, end, step) {
 
 function detectAlign(clipA, clipB, cutA, cutB) {
   const py = path.join(__dirname, 'splice_align.py');
-  const args = ['detect-clips', clipA, clipB, `--a-time=${-Math.max(0.05, 0.05)}`, `--b-time=${cutB}`];
-  // a-time: use last frame of A by default (negative seek from end). We pass a small negative
-  // number; splice_align.py handles the sign. If caller wants a specific cut_a < durA, we'd need
-  // to pass that — but typical splices use A's tail, so -0.05 is correct.
+  // Prefer a positive seek to A's cutA (more reliable than -sseof, which fails on some
+  // encodings). Clamp slightly inside the clip to avoid decoder edge issues.
+  const durA = probeDuration(clipA);
+  let aTime;
+  if (typeof cutA === 'number' && cutA > 0) {
+    aTime = Math.max(0, Math.min(cutA, Math.max(0, durA - 0.05)));
+  } else {
+    aTime = Math.max(0, durA - 0.05);
+  }
+  const args = ['detect-clips', clipA, clipB, `--a-time=${aTime}`, `--b-time=${cutB}`];
   const out = execSync(`python3 "${py}" ${args.map((a) => `"${a}"`).join(' ')}`, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
   return JSON.parse(out);
 }
@@ -464,9 +470,13 @@ function render(clipA, clipB, outPath, opts) {
     const zExpr = `(${scaleB}+(1-${scaleB})*${p})`;
     const xExpr = `(iw/2-iw/zoom/2+${dxB || 0}*(1-${p}))`;
     const yExpr = `(ih/2-ih/zoom/2+${dyB || 0}*(1-${p}))`;
-    const outW = 720;
-    const outH = 1280;
-    const outFps = 24;
+    // Probe B's actual resolution and fps so the warped B matches A for xfade.
+    const probeOut = execSync(`ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate -of json "${clipB}"`).toString();
+    const probed = JSON.parse(probeOut).streams[0];
+    const outW = probed.width;
+    const outH = probed.height;
+    const [fpsNum, fpsDen] = probed.r_frame_rate.split('/').map(Number);
+    const outFps = Math.round(fpsNum / (fpsDen || 1));
 
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'splice-warp-'));
     tmpWarpPath = path.join(tmpDir, 'b_warped.mp4');
