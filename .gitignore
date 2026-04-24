@@ -20,6 +20,7 @@ npm-debug.log*
 
 # Claude Code local settings
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Generated content
 generated-images/

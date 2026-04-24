@@ -1,96 +1,100 @@
-# Video Pipeline Local
+# Video Generator
 
-A local web application for AI-assisted video production, integrating multiple AI services for end-to-end short-form video creation.
+AI video production workflow centered on Claude Code skills plus a small collection of ffmpeg / Python tools. Day-to-day work is driving Veo 3.1 (animation), Gemini 3 Pro Image / "Nano Banana" (still frames), and ElevenLabs (voice + SFX) through an MCP server, with the skills below handling the editing, QA, and assembly steps around them.
 
-## Features
+## Pipeline
 
-- **Project Generation**: Use Claude to generate shot lists with Veo prompts and VO scripts from a creative brief
-- **Video Generation**: Generate video clips using Google Veo 3.1 via Vertex AI
-- **Reference Shots**: Use frames from earlier shots to maintain visual continuity across clips
-- **Voiceover Generation**: Generate VO takes using ElevenLabs
-- **AI Video Analysis**: Analyze generated clips using Gemini 2.5 Flash
-- **AI Review**: Claude reviews options and selects the best take (with frame extraction)
-- **Auto VO Selection**: Automatically selects VO takes that fit within clip duration
-- **Video Assembly**: Concatenate selected clips with VO using ffmpeg
+A typical shot:
 
-## Prerequisites
+1. **Plate + character lock** — generate a canonical set plate and character reference with `nano-banana`.
+2. **Book-end frames** — for each clip, generate a first-frame and last-frame via `nano-banana`, run `frame-qa` to catch prop-state / pose issues before spending Veo credits.
+3. **Veo generation** — submit the clip via the `book-end` skill (or iterate cheaply on Fast via `veo-draft`).
+4. **QA** — `clip-qa` scans the result with Claude vision for glitches that ffmpeg metrics miss (materializing props, ghost limbs, flicker).
+5. **Normalize / splice / overlay** — `normalize-clip` strips embedded letterbox, `splice` finds imperceptible joins between back-to-back generations, `text-reveal` and `caption-box` add overlays.
+6. **Upscale** — `upscale` runs Real-ESRGAN to 4K for final exports.
 
-- Node.js 18+
-- ffmpeg installed and available in PATH
-- API credentials for:
-  - Claude (Anthropic API key)
-  - ElevenLabs (API key)
-  - Google Cloud (Service account JSON with Vertex AI access)
+## Skills
+
+Claude Code skills live in `.claude/skills/`. Each has a `SKILL.md` spec; Claude invokes them automatically when relevant.
+
+### Generation
+| Skill | Purpose |
+|-------|---------|
+| `nano-banana` | Generate images via Gemini 3 Pro Image with reference anchoring. Primary tool for plates, character refs, and book-end frames. |
+| `book-end` | Generate a Veo clip as an animation between two nano-banana poster frames. Default for any shot where continuity drift would be visible. |
+| `veo-draft` | Cost-aware draft-then-quality workflow: iterate prompts on Fast, commit the approved shot to Quality. |
+| `frame-edit` | Frame-surgery workflow for continuity gags (vanishing props, object swaps) — extract, edit, then continue from the edited frame. |
+
+### QA
+| Skill | Purpose |
+|-------|---------|
+| `clip-qa` | Post-Veo visual-anomaly scan using Claude vision (materializing props, ghost limbs, flicker). |
+| `analyze-clip` | Ffmpeg + Whisper based analysis (black frames, freeze frames, dialogue/audio timing). |
+
+Book-end also runs `tools/frame-qa.py` on each frame pair before Veo submission to catch prop-position deltas, endpoint clustering, and distinctness issues.
+
+### Editing & assembly
+| Skill | Purpose |
+|-------|---------|
+| `normalize-clip` | Detect and strip embedded letterbox/pillarbox bars so mixed-source clips splice cleanly. |
+| `splice` | Find and execute imperceptible cuts between two clips, with optional geometric alignment. |
+| `edit-clip` | Trim / speed variations on a clip (tracked in `data/edits/`). |
+| `text-reveal` | Animated ASS subtitle overlays (vertical wipe reveal). |
+| `caption-box` | Social-media caption overlays (white box, black text, hard pop-in/out). |
+| `upscale` | Real-ESRGAN video upscale to 4K on Apple Silicon. |
+
+### Workflow
+| Skill | Purpose |
+|-------|---------|
+| `produce-video` | End-to-end production driver, concept → final. |
+| `archive-workspace` | Move a finished project from `data/workspace/<slug>/` into `data/workspace-archive/<slug>/`. |
+
+## Tools
+
+Standalone scripts under `tools/` that the skills wrap:
+
+| Tool | Notes |
+|------|-------|
+| `tools/nano-banana.cjs` | Gemini 3 Pro Image CLI with reference image support. |
+| `tools/frame-qa.py` | Book-end frame pair validator. |
+| `tools/clip-qa.py` | Claude-vision visual anomaly scanner. |
+| `tools/normalize-clip.cjs` | Letterbox detection + removal. |
+| `tools/splice.cjs` + `tools/splice_align.py` | Seamless-join finder with geometric alignment. |
+| `tools/text-reveal.cjs` | ASS-based top-down text reveal. |
+| `tools/caption-box.cjs` | ffmpeg `drawtext` caption renderer. |
+| `tools/upscale.py` | Real-ESRGAN 4K upscaler. |
+| `tools/gcp/` | GCS and log helpers for the Veo pipeline. |
+
+## Workspace convention
+
+Each project gets its own folder under `data/workspace/<slug>/` with:
+
+```
+refs/     # plates, character locks, reference imagery
+frames/   # book-end poster frames (firstFramePath / lastFramePath)
+clips/    # Veo outputs and intermediate edits
+final/    # assembled / captioned / upscaled deliverables
+scratch/  # throwaway experiments
+```
+
+Archiving preserves that structure under `data/workspace-archive/<slug>/`. Briefs for in-flight and historical projects live under `briefs/`.
+
+## MCP server
+
+All generation and analysis primitives are exposed as MCP tools. The server lives in `mcp/video-generator/` and is wired up via `.mcp.json`. See `CLAUDE.md` and the rules files under `.claude/rules/` for the full tool inventory.
+
+```bash
+cd mcp/video-generator && npm install && npm run build
+```
 
 ## Setup
 
-1. Clone the repository:
-```bash
-git clone https://github.com/YOUR_USERNAME/video-pipeline-local.git
-cd video-pipeline-local
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Start the server:
-```bash
-node server.js
-```
-
-4. Open http://localhost:3000 in your browser
-
-5. Click the ⚙️ Settings button and configure:
-   - Claude API Key
-   - ElevenLabs API Key  
-   - Veo Service Account Path (path to your GCP service account JSON file)
-
-## Google Cloud Setup
-
-1. Create a GCP project
-2. Enable the Vertex AI API
-3. Create a service account with the `roles/aiplatform.user` role
-4. Download the service account JSON key file
-5. Enter the path to this file in Settings
-
-## Usage
-
-1. **Generate or Load a Project**: Enter a creative brief and click "Generate Project", or use the default "Hold Music" project
-2. **Generate Clips**: For each shot, click "Generate with Veo" to create video options
-3. **Generate VO**: For shots with voiceover, click "Generate VO" to create takes
-4. **Describe & Review**: Use "Describe" to get AI analysis of clips, then "Run AI Review" to auto-select the best option
-5. **Assemble**: Once shots are selected, click "Assemble Video" to create the final cut
-
-## Project Structure
-
-```
-video-pipeline-local/
-├── server.js          # Express server with API proxies
-├── public/
-│   ├── index.html     # Main HTML page
-│   └── app.jsx        # React application (served via Babel standalone)
-├── package.json
-└── data/              # Created at runtime (gitignored)
-    ├── config.json    # API keys and settings
-    ├── projects/      # Saved project files
-    ├── audio/         # Generated VO files
-    ├── video/         # Generated video clips
-    └── exports/       # Assembled videos
-```
-
-## Work in Progress
-
-This is an active development project. Current limitations:
-- Single project at a time
-- No batch operations
-- Basic error handling
-- Designed for 9:16 vertical short-form video
-
-## Credits
-
-Built with Claude (Anthropic), as part of an ongoing video art project exploring AI-assisted creative workflows.
+- Node 18+, Python 3.10+, ffmpeg on `PATH`
+- For upscale: `pip install realesrgan-ncnn-py`
+- Credentials (loaded from `data/config.json`, which is gitignored):
+  - Anthropic API key
+  - ElevenLabs API key
+  - GCP service account JSON with Vertex AI access (for Veo + Nano Banana)
 
 ## License
 
