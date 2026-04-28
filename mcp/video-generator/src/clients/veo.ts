@@ -45,6 +45,7 @@ export interface VeoPollResult {
   video?: {
     bytesBase64Encoded?: string;
     uri?: string;
+    gcsUri?: string;
   };
   error?: string;
 }
@@ -221,7 +222,7 @@ export async function pollVeoOperation(
 
   const data = (await response.json()) as {
     done?: boolean;
-    response?: { videos?: Array<{ bytesBase64Encoded?: string; uri?: string }> };
+    response?: { videos?: Array<{ bytesBase64Encoded?: string; uri?: string; gcsUri?: string }> };
     error?: { message?: string };
   };
 
@@ -264,14 +265,13 @@ export async function downloadVeoVideo(
     fs.mkdirSync(VIDEO_DIR, { recursive: true });
   }
 
+  const gcsUri = result.video.gcsUri || result.video.uri;
   if (result.video.bytesBase64Encoded) {
-    // Direct base64 - decode and save
     const buffer = Buffer.from(result.video.bytesBase64Encoded, "base64");
     fs.writeFileSync(outputPath, buffer);
-  } else if (result.video.uri) {
-    // GCS URI - download via HTTPS
+  } else if (gcsUri) {
     const { accessToken } = await getGoogleAccessToken();
-    const videoData = await downloadFromGcs(result.video.uri, accessToken);
+    const videoData = await downloadFromGcs(gcsUri, accessToken);
     fs.writeFileSync(outputPath, videoData);
   } else {
     throw new Error("No video data or URI in result");
