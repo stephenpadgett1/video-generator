@@ -37,3 +37,6 @@ debug_temp/
 
 # Windows artifacts
 nul
+
+# MCP runtime state (auto-created by services/jobs.ts if missing)
+jobs.json
