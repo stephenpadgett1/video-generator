@@ -245,6 +245,12 @@ def call_claude(strip_path: str, api_key: str, model: str, interval: float,
                 continue
             raise SystemExit(f"Network error contacting Claude: {e}")
 
+    try:
+        import costlog
+        costlog.log_call("clip-qa", data, strip_path)
+    except Exception:
+        pass
+
     parts = data.get("content", [])
     text = next((p.get("text") for p in parts if p.get("type") == "text"), None)
     if not text:

@@ -242,6 +242,12 @@ def call_claude(frame_path: str, refs: list, preserve: str, change: str,
                 continue
             raise SystemExit(f"Network error contacting Claude: {e}")
 
+    try:
+        import costlog
+        costlog.log_call("frame-qa", data, frame_path)
+    except Exception:
+        pass
+
     parts = data.get("content", [])
     text = next((p.get("text") for p in parts if p.get("type") == "text"), None)
     if not text:
