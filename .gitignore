@@ -18,6 +18,10 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Python
+__pycache__/
+*.pyc
+
 # Claude Code local settings
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
