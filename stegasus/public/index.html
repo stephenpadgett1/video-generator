@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>stegasus — sixteen bytes hidden in plain sight</title>
+  <meta name="description" content="Sixteen bytes hidden in the audio of every video. One slot per video. A small message in plain sight — yours to fill.">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    :root {
+      --bg:        #0a1224;
+      --bg-deep:   #050912;
+      --grid:      #1c263a;
+      --text:      #f7f0e4;
+      --text-dim:  #8a9bb4;
+      --accent:    #f0b860;
+      --cool:      #a8c8e8;
+      --success:   #7fc99a;
+      --rule:      #2a3553;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--text);
+      font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      min-height: 100vh;
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 64px 64px;
+      background-position: -1px -1px;
+    }
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 30%, var(--bg-deep) 100%);
+      pointer-events: none;
+    }
+    main {
+      max-width: 640px; margin: 0 auto; padding: 12vh 28px 8vh;
+      position: relative;
+    }
+    .wordmark {
+      font-family: "Times New Roman", Georgia, serif;
+      font-size: clamp(56px, 11vw, 96px);
+      font-weight: 400; line-height: 1; text-align: center;
+      letter-spacing: -0.005em;
+    }
+    .rule {
+      width: 64px; height: 1px; background: var(--text-dim);
+      margin: 18px auto 32px; opacity: 0.5;
+    }
+    .tag {
+      font-family: "Times New Roman", Georgia, serif;
+      font-style: italic;
+      font-size: clamp(18px, 2.4vw, 22px);
+      color: var(--text-dim);
+      text-align: center; margin-bottom: 48px;
+    }
+    .lede {
+      font-size: 19px; line-height: 1.65;
+      margin-bottom: 28px; color: var(--text);
+    }
+    .lede em { color: var(--cool); font-style: italic; }
+    .lede strong { color: var(--accent); font-weight: 500; }
+    p { margin-bottom: 22px; color: var(--text); }
+    p.dim { color: var(--text-dim); font-size: 15px; }
+    code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.92em; color: var(--accent); }
+    .specs {
+      display: grid; grid-template-columns: max-content 1fr;
+      gap: 10px 24px; margin: 36px 0;
+      padding: 24px; border: 1px solid var(--rule); border-radius: 6px;
+      background: rgba(20, 28, 48, 0.55);
+      font-size: 15px;
+    }
+    .specs .k { color: var(--text-dim);
+      font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding-top: 3px; }
+    .specs .v { color: var(--text); }
+    .specs .v.accent { color: var(--accent); font-weight: 500; }
+    .examples {
+      margin: 24px 0 8px;
+      border-left: 2px solid var(--accent);
+      padding: 10px 0 10px 18px;
+    }
+    .examples li {
+      list-style: none;
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+      font-size: 14px; color: var(--cool);
+      padding: 5px 0;
+    }
+    .examples li::before { content: "› "; color: var(--accent); opacity: 0.6; }
+    .cta-wrap { text-align: center; margin: 48px 0 40px; }
+    .btn {
+      display: inline-block;
+      background: var(--accent); color: var(--bg-deep);
+      padding: 14px 32px; border-radius: 4px;
+      font: inherit; font-weight: 500; font-size: 16px;
+      text-decoration: none; letter-spacing: 0.01em;
+      transition: filter 0.15s;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    footer {
+      margin-top: 56px; padding-top: 22px;
+      border-top: 1px solid var(--rule);
+      text-align: center;
+      font-size: 13px; color: var(--text-dim);
+    }
+    footer a { color: var(--text-dim); text-decoration: none;
+      border-bottom: 1px dotted var(--text-dim); }
+    footer a:hover { color: var(--accent); border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 class="wordmark">stegasus</h1>
+    <div class="rule"></div>
+    <p class="tag">Steganography as a service</p>
+
+    <p class="lede">
+      Every video we publish carries <strong>sixteen bytes</strong> of audio
+      steganography in its soundtrack — a tiny message hidden in the noise
+      floor, inaudible to a listener, recoverable by anyone with an
+      <code>audiowmark</code> decoder.
+    </p>
+
+    <p>
+      <em>One slot per video. Yours to fill.</em>
+      You write the sixteen bytes — a name and a date, a coordinate, a hash,
+      a quiet line for someone who knows to look. We embed them. They go
+      out with the next video and live there forever.
+    </p>
+
+    <div class="specs">
+      <div class="k">payload</div><div class="v accent">16 bytes</div>
+      <div class="k">format</div><div class="v">any UTF-8 text, or raw hex</div>
+      <div class="k">channel</div><div class="v">audiowmark spread-spectrum</div>
+      <div class="k">durability</div><div class="v">survives YouTube / IG / TikTok transcoding</div>
+      <div class="k">slots</div><div class="v">one per video</div>
+      <div class="k">price</div><div class="v accent">$100</div>
+    </div>
+
+    <p class="dim" style="margin-top: 32px;">
+      What people put in sixteen bytes:
+    </p>
+    <ul class="examples">
+      <li>BRIANNA &amp; JEREMY 6/24</li>
+      <li>37.8199N 122.4783W</li>
+      <li>git: 4a9c3e8</li>
+      <li>ed25519:6f3a8d</li>
+      <li>I WAS HERE — RP</li>
+    </ul>
+
+    <p class="dim">
+      It is not a private messaging service. We see your sixteen bytes
+      before they ship and we publish them in the clear. If you want privacy
+      inside the channel, encrypt the bytes yourself first and share the
+      key out of band.
+    </p>
+
+    <div class="cta-wrap">
+      <a class="btn" href="mailto:stephen+stegasus@centaur-services.com?subject=stegasus%20purchase">Contact To Purchase</a>
+    </div>
+
+    <footer>
+      <span style="opacity: 0.6;">stegasus · <span class="mono" style="color: var(--text-dim);">stegasus.net</span></span>
+    </footer>
+  </main>
+</body>
+</html>
