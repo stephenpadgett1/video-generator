@@ -1,6 +1,8 @@
 # Video Generator
 
-AI video production workflow centered on Claude Code skills plus a small collection of ffmpeg / Python tools. Day-to-day work is driving Veo 3.1 (animation), Gemini 3 Pro Image / "Nano Banana" (still frames), and ElevenLabs (voice + SFX) through an MCP server, with the skills below handling the editing, QA, and assembly steps around them.
+A production pipeline for AI-generated short-form video. Drives **Veo 3.1** (animation), **Gemini 3 Pro Image / "Nano Banana"** (still frames), and **ElevenLabs** (voice + SFX) through an MCP server with ~45 tools, with Claude Code skills handling the editing, QA, and assembly around them.
+
+The opinionated piece is the **Claude-vision QA loop**: every Veo output is scanned for the failure modes raw video-model outputs routinely ship with — materializing props, ghost limbs, flicker, sub-frame splice mismatches — before anything reaches the editing layer.
 
 ## Pipeline
 
